@@ -1,0 +1,16 @@
+[
+  {
+    "id": "1",
+    "username": "editor",
+    "passwordHash": "$2b$10$R5DjB2EBADoUn6NIozgXPuDC0VNcGSYopZnDOujPyIddVLBZtBFX6",
+    "role": "editor",
+    "displayName": "Editor"
+  },
+  {
+    "id": "2",
+    "username": "approver",
+    "passwordHash": "$2b$10$zZCvBUJCUqitbP/kjrR2c.2EqJc49QBLQPorw9KwkZIh6dfc4SkPm",
+    "role": "approver",
+    "displayName": "Approver"
+  }
+]
