@@ -379,6 +379,35 @@ async function getSheetsClient() {
 // API Endpoints
 // -----------------------------------------------------------------------------
 
+// Server Health Check Endpoint
+app.get('/health', async (req, res) => {
+    const healthStatus = {
+        uptime: process.uptime(),
+        status: 'UP',
+        timestamp: new Date().toISOString(),
+        database: 'unhealthy',
+        whatsapp: whatsappStatus.status
+    };
+
+    try {
+        const dbCheck = await pool.query('SELECT NOW()');
+        if (dbCheck && dbCheck.rows.length > 0) {
+            healthStatus.database = 'healthy';
+        }
+    } catch (dbErr) {
+        console.error('[Health Check] Database check failed:', dbErr.message);
+        healthStatus.status = 'DOWN';
+        healthStatus.database = dbErr.message;
+        return res.status(500).json(healthStatus);
+    }
+
+    res.json(healthStatus);
+});
+
+app.get('/api/health', (req, res) => {
+    res.redirect('/health');
+});
+
 // Fetch demand requests from Google Sheets
 app.get('/api/requests', async (req, res) => {
     try {
