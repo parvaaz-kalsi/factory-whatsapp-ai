@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { FiAlertTriangle, FiInfo, FiInbox, FiRefreshCw, FiUser } from 'react-icons/fi';
 import Metrics from './components/Metrics';
 import ApproverMetrics from './components/ApproverMetrics';
 import Filters from './components/Filters';
@@ -110,6 +111,24 @@ export default function App() {
   });
 
   const [availableGroups, setAvailableGroups] = useState([]);
+  const [isSyncingGroups, setIsSyncingGroups] = useState(false);
+  const [globalModal, setGlobalModal] = useState({ isOpen: false, type: 'alert', title: '', message: '', onConfirm: null, onCancel: null });
+
+  useEffect(() => {
+    window.alert = (message) => {
+      setGlobalModal({ isOpen: true, type: 'alert', title: 'Notice', message, onConfirm: () => setGlobalModal({ isOpen: false }) });
+    };
+  }, []);
+
+  const customConfirm = (title, message) => {
+    return new Promise((resolve) => {
+      setGlobalModal({
+        isOpen: true, type: 'confirm', title, message,
+        onConfirm: () => { setGlobalModal({ isOpen: false }); resolve(true); },
+        onCancel: () => { setGlobalModal({ isOpen: false }); resolve(false); }
+      });
+    });
+  };
 
   const hasNoActiveGroups = whatsappStatus.status === 'connected' && 
     (!availableGroups || availableGroups.length === 0 || !availableGroups.some(g => g.active));
@@ -131,7 +150,12 @@ export default function App() {
       const res = await fetch('/api/whatsapp/groups');
       if (res.ok) {
         const data = await res.json();
-        setAvailableGroups(data);
+        if (Array.isArray(data)) {
+          setAvailableGroups(data);
+        } else {
+          setAvailableGroups(data.groups || []);
+          setIsSyncingGroups(data.isSyncing || false);
+        }
       }
     } catch (err) {
       console.error('Error fetching whatsapp groups:', err);
@@ -222,7 +246,12 @@ export default function App() {
       }
       if (whatsappGroupsRes && whatsappGroupsRes.ok) {
         const groupsData = await whatsappGroupsRes.json();
-        setAvailableGroups(groupsData);
+        if (Array.isArray(groupsData)) {
+          setAvailableGroups(groupsData);
+        } else {
+          setAvailableGroups(groupsData.groups || []);
+          setIsSyncingGroups(groupsData.isSyncing || false);
+        }
       }
     } catch (err) {
       console.error('Failed to sync dashboard data:', err);
@@ -279,7 +308,7 @@ export default function App() {
   // Handle Reject Action
   const [isRejecting, setIsRejecting] = useState(false);
   const handleReject = async (id) => {
-    if (!window.confirm('Are you sure you want to reject and delete this request?')) {
+    if (!(await customConfirm('Confirm Rejection', 'Are you sure you want to reject and delete this request?'))) {
       return;
     }
     try {
@@ -810,20 +839,13 @@ export default function App() {
         </div>
 
         <div className="sidebar-footer" style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-          {currentUser && (
-            <div style={{ padding: '0 0.5rem', fontSize: '0.8rem', color: 'var(--text-secondary)', fontWeight: 500 }}>
-              Profile: <strong>{currentUser.displayName}</strong> 
-              <br />
-              Role: <span style={{ textTransform: 'capitalize', fontWeight: 600 }}>{currentUser.role}</span>
-            </div>
-          )}
           <button 
             onClick={() => {
               localStorage.removeItem('user');
               window.location.reload();
             }}
-            className="sidebar-menu-item"
-            style={{ width: '100%', textAlign: 'left', border: 'none', background: 'none', padding: '0.75rem 1rem' }}
+            className="sidebar-menu-item danger"
+            style={{ width: '100%', textAlign: 'left', border: 'none', background: 'none' }}
           >
             <svg className="sidebar-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
@@ -943,21 +965,58 @@ export default function App() {
                 onClick={activeTab === 'inventory' ? fetchInventory : fetchData}
                 disabled={refreshing || inventoryLoading}
               >
-                <svg 
-                  width="16" 
-                  height="16" 
-                  fill="none" 
-                  viewBox="0 0 24 24" 
-                  stroke="currentColor" 
-                  strokeWidth={2.5}
-                  style={{ animation: (refreshing || inventoryLoading) ? 'spin 1s linear infinite' : 'none' }}
-                >
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 1121.21 8H18" />
-                </svg>
+                <FiRefreshCw 
+                  size={16} 
+                  strokeWidth={2.5} 
+                  style={{ animation: (refreshing || inventoryLoading) ? 'spin 1s linear infinite' : 'none' }} 
+                />
                 {activeTab === 'inventory' 
                   ? (inventoryLoading ? 'Loading...' : 'Refresh Inventory') 
                   : (refreshing ? 'Syncing...' : 'Sync Sheet')}
               </button>
+            )}
+
+            {/* User Profile Premium Badge */}
+            {currentUser && (
+              <div 
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.75rem',
+                  background: 'linear-gradient(135deg, #fffbeb 0%, #fef3c7 100%)',
+                  color: '#92400e',
+                  padding: '0.35rem 0.35rem 0.35rem 1.25rem',
+                  borderRadius: '9999px',
+                  fontWeight: 600,
+                  fontSize: '0.85rem',
+                  boxShadow: '0 4px 6px -1px rgba(245, 158, 11, 0.1), 0 2px 4px -2px rgba(245, 158, 11, 0.05)',
+                  border: '1px solid #fde68a',
+                  marginLeft: '0.5rem',
+                  transition: 'transform 0.2s ease, box-shadow 0.2s ease',
+                  cursor: 'default'
+                }}
+                onMouseOver={(e) => { e.currentTarget.style.transform = 'translateY(-1px)'; e.currentTarget.style.boxShadow = '0 6px 8px -1px rgba(245, 158, 11, 0.15), 0 3px 6px -2px rgba(245, 158, 11, 0.1)'; }}
+                onMouseOut={(e) => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = '0 4px 6px -1px rgba(245, 158, 11, 0.1), 0 2px 4px -2px rgba(245, 158, 11, 0.05)'; }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center' }}>
+                  <span style={{ color: '#92400e', textTransform: 'capitalize', fontWeight: 700, fontSize: '0.9rem', letterSpacing: '0.02em' }}>
+                    {currentUser.role}
+                  </span>
+                </div>
+                <div style={{ 
+                  display: 'flex', 
+                  alignItems: 'center', 
+                  justifyContent: 'center', 
+                  width: '32px', 
+                  height: '32px', 
+                  background: 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)', 
+                  color: 'white', 
+                  borderRadius: '50%',
+                  boxShadow: 'inset 0 2px 4px rgba(255,255,255,0.2), 0 2px 4px rgba(217, 119, 6, 0.2)'
+                }}>
+                  <FiUser size={16} strokeWidth={2.5} />
+                </div>
+              </div>
             )}
           </div>
         </header>
@@ -1458,7 +1517,7 @@ export default function App() {
                       <button 
                         className="btn-whatsapp-action btn-whatsapp-action-danger"
                         onClick={async () => {
-                          if (window.confirm('Are you sure you want to disconnect WhatsApp? This will log out the active session.')) {
+                          if (await customConfirm('Disconnect WhatsApp', 'Are you sure you want to disconnect WhatsApp? This will log out the active session.')) {
                             try {
                               setRefreshing(true);
                               const res = await fetch('/api/whatsapp/logout', { method: 'POST' });
@@ -1549,9 +1608,7 @@ export default function App() {
 
             {filteredRequests.length === 0 ? (
               <div className="empty-state">
-                <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M9.172 16.172a4 4 0 015.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
+                <FiInbox size={56} color="var(--text-muted)" style={{ marginBottom: '1rem', opacity: 0.6 }} />
                 <h3>No Demands Found</h3>
                 <p>
                   {activeTab === 'pending' 
@@ -2154,6 +2211,29 @@ export default function App() {
           </>
         )}
       </main>
+
+      {/* Global Custom Modal Pop-up */}
+      {globalModal.isOpen && (
+        <div style={{ position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', backgroundColor: 'rgba(15, 23, 42, 0.6)', zIndex: 9999, display: 'flex', justifyContent: 'center', alignItems: 'center', backdropFilter: 'blur(4px)', animation: 'fadeIn 0.2s ease-out' }}>
+          <div style={{ backgroundColor: 'white', borderRadius: '16px', padding: '2rem', width: '90%', maxWidth: '420px', boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)', transform: 'scale(1)', animation: 'popIn 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275)' }}>
+            <h3 style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--text-primary)', marginBottom: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              {globalModal.type === 'confirm' ? <><FiAlertTriangle color="#ef4444" size={22} /> Confirm Action</> : <><FiInfo color="var(--primary-color)" size={22} /> Notice</>}
+            </h3>
+            <p style={{ fontSize: '0.95rem', color: 'var(--text-secondary)', marginBottom: '1.75rem', lineHeight: 1.5 }}>
+              {globalModal.title && <strong style={{color: 'var(--text-primary)', display: 'block', marginBottom: '0.25rem'}}>{globalModal.title}</strong>}
+              {globalModal.message}
+            </p>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem' }}>
+              {globalModal.type === 'confirm' && (
+                <button onClick={globalModal.onCancel} style={{ padding: '0.625rem 1.25rem', backgroundColor: '#f1f5f9', color: '#475569', border: 'none', borderRadius: '8px', fontWeight: 600, cursor: 'pointer', transition: 'all 0.2s', fontSize: '0.9rem' }} onMouseOver={e => e.target.style.backgroundColor = '#e2e8f0'} onMouseOut={e => e.target.style.backgroundColor = '#f1f5f9'}>Cancel</button>
+              )}
+              <button onClick={globalModal.onConfirm} style={{ padding: '0.625rem 1.25rem', backgroundColor: globalModal.type === 'confirm' ? '#ef4444' : 'var(--primary-color)', color: 'white', border: 'none', borderRadius: '8px', fontWeight: 600, cursor: 'pointer', transition: 'all 0.2s', fontSize: '0.9rem', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)' }} onMouseOver={e => e.target.style.filter = 'brightness(1.1)'} onMouseOut={e => e.target.style.filter = 'brightness(1)'}>
+                {globalModal.type === 'confirm' ? 'Proceed' : 'Okay'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 

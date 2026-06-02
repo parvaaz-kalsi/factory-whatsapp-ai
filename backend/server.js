@@ -10,7 +10,8 @@ require('dotenv').config();
 
 // WhatsApp Bot & AI Imports
 const { Client, LocalAuth } = require('whatsapp-web.js');
-const qrcode = require('qrcode-terminal');
+const qrTerminal = require('qrcode-terminal');
+const QRCode = require('qrcode');
 const { GoogleGenerativeAI } = require("@google/generative-ai");
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
@@ -23,7 +24,14 @@ const puppeteerOptions = {
         '--no-sandbox',
         '--disable-setuid-sandbox',
         '--disable-dev-shm-usage',
-        '--disable-gpu'
+        '--disable-gpu',
+        '--disable-extensions',
+        '--disable-background-networking',
+        '--disable-sync',
+        '--disable-translate',
+        '--no-first-run',
+        '--disable-features=TranslateUI',
+        '--single-process'
     ]
 };
 
@@ -35,18 +43,77 @@ const whatsappClient = new Client({
     authStrategy: new LocalAuth({ clientId: 'backend-whatsapp' }),
     puppeteer: puppeteerOptions,
     webVersionCache: {
-        type: 'remote',
-        remotePath: 'https://raw.githubusercontent.com/wppconnect-team/wa-version/main/html/2.2412.54.html'
+        type: 'local'
     }
 });
 
 let whatsappStatus = {
     status: 'disconnected',
     qr: null,
+    qrDataUrl: null,
     phone: null,
     pushname: null,
-    lastConnected: null
+    lastConnected: null,
+    lastStateChange: Date.now(),
+    initAttempt: 0
 };
+
+// Reconnect cooldown to prevent infinite loops
+let lastReconnectTime = 0;
+const RECONNECT_COOLDOWN_MS = 15000;
+let authTimeoutHandle = null;
+const AUTH_TIMEOUT_MS = 120000; // 2 minutes max in authenticating state
+
+function clearAuthTimeout() {
+    if (authTimeoutHandle) {
+        clearTimeout(authTimeoutHandle);
+        authTimeoutHandle = null;
+    }
+}
+
+function startAuthTimeout() {
+    clearAuthTimeout();
+    authTimeoutHandle = setTimeout(async () => {
+        if (whatsappStatus.status === 'authenticating') {
+            console.log('[WhatsApp Watchdog] Stuck in authenticating for too long. Forcing re-init...');
+            whatsappStatus.status = 'disconnected';
+            whatsappStatus.lastStateChange = Date.now();
+            try { await whatsappClient.destroy(); } catch (e) { /* ignore */ }
+            safeInitialize();
+        }
+    }, AUTH_TIMEOUT_MS);
+}
+
+async function safeInitialize() {
+    const now = Date.now();
+    if (now - lastReconnectTime < RECONNECT_COOLDOWN_MS) {
+        const waitMs = RECONNECT_COOLDOWN_MS - (now - lastReconnectTime);
+        console.log(`[WhatsApp] Reconnect cooldown active, waiting ${Math.ceil(waitMs / 1000)}s...`);
+        await new Promise(r => setTimeout(r, waitMs));
+    }
+    lastReconnectTime = Date.now();
+    whatsappStatus.initAttempt++;
+    
+    // Clean up stale lockfile from crashed Chrome processes
+    const lockfile = path.join(__dirname, '.wwebjs_auth', 'session-backend-whatsapp', 'lockfile');
+    try { 
+        if (fs.existsSync(lockfile)) {
+            fs.unlinkSync(lockfile);
+            console.log('[WhatsApp] Cleaned up stale lockfile');
+        }
+    } catch (e) { 
+        console.log('[WhatsApp] Lockfile cleanup notice:', e.message);
+    }
+    
+    console.log(`[WhatsApp] Initializing client (attempt #${whatsappStatus.initAttempt})...`);
+    try {
+        await whatsappClient.initialize();
+    } catch (err) {
+        console.error('[WhatsApp] Initialize failed:', err.message);
+        whatsappStatus.status = 'disconnected';
+        whatsappStatus.lastStateChange = Date.now();
+    }
+}
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -1085,28 +1152,104 @@ app.get('/api/voice-notes', (req, res) => {
 
 // WhatsApp Integration API Endpoints
 app.get('/api/whatsapp/status', (req, res) => {
-    res.json(whatsappStatus);
+    res.json({
+        status: whatsappStatus.status,
+        qr: whatsappStatus.qr,
+        qrDataUrl: whatsappStatus.qrDataUrl,
+        phone: whatsappStatus.phone,
+        pushname: whatsappStatus.pushname,
+        lastConnected: whatsappStatus.lastConnected,
+        initAttempt: whatsappStatus.initAttempt
+    });
+});
+
+// Instant QR image endpoint (returns base64 PNG data URL)
+app.get('/api/whatsapp/qr-image', async (req, res) => {
+    if (!whatsappStatus.qr) {
+        return res.status(404).json({ error: 'No QR code available', status: whatsappStatus.status });
+    }
+    try {
+        const dataUrl = await QRCode.toDataURL(whatsappStatus.qr, {
+            width: 300,
+            margin: 2,
+            color: { dark: '#0f172a', light: '#ffffff' }
+        });
+        res.json({ qrDataUrl: dataUrl });
+    } catch (err) {
+        res.status(500).json({ error: 'Failed to generate QR image' });
+    }
+});
+
+// Debug endpoint to diagnose chat loading issues
+app.get('/api/whatsapp/debug-chats', async (req, res) => {
+    try {
+        if (whatsappStatus.status !== 'connected') {
+            return res.json({ error: 'Not connected', status: whatsappStatus.status });
+        }
+        const chats = await whatsappClient.getChats();
+        const summary = chats.map(c => ({
+            name: c.name || c.id?._serialized || 'Unknown',
+            isGroup: c.isGroup,
+            id: c.id?._serialized
+        }));
+        const groups = summary.filter(c => c.isGroup);
+        res.json({
+            totalChats: chats.length,
+            totalGroups: groups.length,
+            groups: groups,
+            sampleChats: summary.slice(0, 10)
+        });
+    } catch (err) {
+        res.json({ error: err.message });
+    }
 });
 
 app.get('/api/whatsapp/groups', async (req, res) => {
     try {
-        // 1. Get groups from DB
-        const dbResult = await pool.query('SELECT * FROM whatsapp_groups');
-        const dbGroups = dbResult.rows;
-
-        // Map to easily look up active status and name from DB
+        // 1. Get groups from DB (gracefully handle DB errors)
+        let dbGroups = [];
         const dbMap = new Map();
-        dbGroups.forEach(g => {
-            dbMap.set(g.group_id, { name: g.group_name, active: g.active });
-        });
+        try {
+            const dbResult = await pool.query('SELECT * FROM whatsapp_groups');
+            dbGroups = dbResult.rows;
+            dbGroups.forEach(g => {
+                dbMap.set(g.group_id, { name: g.group_name, active: g.active });
+            });
+            console.log(`[WhatsApp Groups] Loaded ${dbGroups.length} groups from database.`);
+        } catch (dbErr) {
+            console.error('[WhatsApp Groups] DB query failed (continuing with live chats only):', dbErr.message);
+        }
 
         let combinedGroups = [];
 
         // 2. Get live chats if connected
         if (whatsappStatus.status === 'connected') {
             try {
-                const chats = await whatsappClient.getChats();
-                const groupChats = chats.filter(c => c.isGroup);
+                // Prevent overlapping getChats calls and cache results for 30s
+                if (!global.whatsappChatsCache) {
+                    global.whatsappChatsCache = { data: [], lastFetch: 0, fetching: false };
+                }
+                
+                const now = Date.now();
+                if (now - global.whatsappChatsCache.lastFetch > 30000 && !global.whatsappChatsCache.fetching) {
+                    global.whatsappChatsCache.fetching = true;
+                    console.log('[WhatsApp Groups] Fetching live chats from WhatsApp client (uncached)...');
+                    
+                    // Fire and forget or await with timeout
+                    whatsappClient.getChats().then(chats => {
+                        console.log(`[WhatsApp Groups] Total chats fetched: ${chats.length}`);
+                        global.whatsappChatsCache.data = chats.filter(c => c.isGroup);
+                        global.whatsappChatsCache.lastFetch = Date.now();
+                        global.whatsappChatsCache.fetching = false;
+                        console.log(`[WhatsApp Groups] Group chats found and cached: ${global.whatsappChatsCache.data.length}`);
+                    }).catch(err => {
+                        console.error('[WhatsApp Groups] Error fetching live chats:', err.message);
+                        global.whatsappChatsCache.fetching = false;
+                    });
+                }
+                
+                // Use cached group chats
+                const groupChats = global.whatsappChatsCache.data || [];
                 
                 groupChats.forEach(chat => {
                     const dbEntry = dbMap.get(chat.id._serialized);
@@ -1115,12 +1258,13 @@ app.get('/api/whatsapp/groups', async (req, res) => {
                         name: chat.name || dbEntry?.name || 'Unnamed Group',
                         active: dbEntry ? dbEntry.active : false
                     });
-                    // Remove from map to keep track of what's already merged
                     dbMap.delete(chat.id._serialized);
                 });
             } catch (clientErr) {
-                console.error('Error fetching live chats from WhatsApp client:', clientErr);
+                console.error('[WhatsApp Groups] Error processing live chats:', clientErr.message);
             }
+        } else {
+            console.log(`[WhatsApp Groups] WhatsApp not connected (status: ${whatsappStatus.status}), skipping live chat fetch.`);
         }
 
         // 3. For anything remaining in the DB (historical groups not in recent chats)
@@ -1132,10 +1276,15 @@ app.get('/api/whatsapp/groups', async (req, res) => {
             });
         });
 
-        res.json(combinedGroups);
+        console.log(`[WhatsApp Groups] Returning ${combinedGroups.length} total groups to frontend.`);
+        res.json({
+            groups: combinedGroups,
+            isSyncing: global.whatsappChatsCache ? global.whatsappChatsCache.fetching : false
+        });
     } catch (err) {
         console.error('Error in GET /api/whatsapp/groups:', err);
-        res.status(500).json({ error: 'Failed to retrieve WhatsApp groups' });
+        // Return empty array instead of 500 to prevent frontend from breaking
+        res.json({ groups: [], isSyncing: false });
     }
 });
 
@@ -1166,29 +1315,25 @@ app.post('/api/whatsapp/groups/active', async (req, res) => {
 app.post('/api/whatsapp/logout', async (req, res) => {
     try {
         console.log('[WhatsApp Admin] Logging out WhatsApp client manually...');
+        clearAuthTimeout();
         
-        // Reset in-memory state first
         whatsappStatus.status = 'disconnected';
         whatsappStatus.qr = null;
+        whatsappStatus.qrDataUrl = null;
         whatsappStatus.phone = null;
         whatsappStatus.pushname = null;
+        whatsappStatus.lastStateChange = Date.now();
 
-        try {
-            await whatsappClient.logout();
-        } catch (e) {
-            console.log('Client logout failed (could be already logged out):', e.message);
+        try { await whatsappClient.logout(); } catch (e) {
+            console.log('Client logout notice:', e.message);
         }
 
-        // Re-initialize client to generate a new QR code
-        console.log('[WhatsApp Admin] Re-initializing WhatsApp client after logout...');
-        try {
-            await whatsappClient.destroy();
-        } catch (e) {
-            console.log('Client already destroyed or error destroying:', e.message);
-        }
-        await whatsappClient.initialize();
+        console.log('[WhatsApp Admin] Re-initializing after logout...');
+        try { await whatsappClient.destroy(); } catch (e) { /* ignore */ }
         
-        res.json({ success: true, message: 'Logged out successfully, re-initializing client' });
+        // Respond immediately, init in background
+        res.json({ success: true, message: 'Logged out. Generating new QR code...' });
+        safeInitialize();
     } catch (err) {
         console.error('Error logging out WhatsApp client:', err);
         res.status(500).json({ error: 'Failed to logout client', details: err.message });
@@ -1198,15 +1343,18 @@ app.post('/api/whatsapp/logout', async (req, res) => {
 app.post('/api/whatsapp/reconnect', async (req, res) => {
     try {
         console.log('[WhatsApp Admin] Re-initializing WhatsApp client manually...');
-        whatsappStatus.status = 'authenticating';
+        clearAuthTimeout();
+        
+        whatsappStatus.status = 'initializing';
         whatsappStatus.qr = null;
-        try {
-            await whatsappClient.destroy();
-        } catch (e) {
-            console.log('Client already destroyed or error destroying:', e.message);
-        }
-        await whatsappClient.initialize();
-        res.json({ success: true, message: 'Re-initialization started' });
+        whatsappStatus.qrDataUrl = null;
+        whatsappStatus.lastStateChange = Date.now();
+        
+        try { await whatsappClient.destroy(); } catch (e) { /* ignore */ }
+        
+        // Respond immediately, init in background
+        res.json({ success: true, message: 'Re-initialization started. QR code will appear shortly.' });
+        safeInitialize();
     } catch (err) {
         console.error('Error re-initializing WhatsApp client:', err);
         res.status(500).json({ error: 'Failed to re-initialize client', details: err.message });
@@ -1279,71 +1427,98 @@ app.post('/api/test/simulate-message', async (req, res) => {
     }
 });
 
-whatsappClient.on('qr', qr => {
-    console.log("==================================================");
-    console.log("  Scan QR Code below to connect WhatsApp:");
-    console.log("==================================================");
-    qrcode.generate(qr, { small: true });
+whatsappClient.on('qr', async (qr) => {
+    console.log('==================================================');
+    console.log('  Scan QR Code below to connect WhatsApp:');
+    console.log('==================================================');
+    qrTerminal.generate(qr, { small: true });
 
+    clearAuthTimeout();
     whatsappStatus.status = 'qr';
     whatsappStatus.qr = qr;
     whatsappStatus.phone = null;
     whatsappStatus.pushname = null;
+    whatsappStatus.lastStateChange = Date.now();
+
+    // Generate base64 QR image instantly (no external API needed)
+    try {
+        whatsappStatus.qrDataUrl = await QRCode.toDataURL(qr, {
+            width: 300, margin: 2,
+            color: { dark: '#0f172a', light: '#ffffff' }
+        });
+        console.log('[WhatsApp] QR data URL generated locally (instant)');
+    } catch (err) {
+        console.error('[WhatsApp] QR image generation failed:', err.message);
+    }
 });
 
 whatsappClient.on('authenticated', () => {
-    console.log("==================================================");
-    console.log("  WhatsApp Authenticated! Syncing history...");
-    console.log("==================================================");
+    console.log('==================================================');
+    console.log('  WhatsApp Authenticated! Syncing history...');
+    console.log('==================================================');
 
     whatsappStatus.status = 'authenticating';
     whatsappStatus.qr = null;
+    whatsappStatus.qrDataUrl = null;
+    whatsappStatus.lastStateChange = Date.now();
+    startAuthTimeout();
 });
 
-whatsappClient.on('auth_failure', msg => {
-    console.error("==================================================");
-    console.error("  WhatsApp Authentication Failure:", msg);
-    console.error("==================================================");
+whatsappClient.on('auth_failure', async (msg) => {
+    console.error('==================================================');
+    console.error('  WhatsApp Authentication Failure:', msg);
+    console.error('==================================================');
 
+    clearAuthTimeout();
     whatsappStatus.status = 'disconnected';
     whatsappStatus.qr = null;
+    whatsappStatus.qrDataUrl = null;
     whatsappStatus.phone = null;
     whatsappStatus.pushname = null;
+    whatsappStatus.lastStateChange = Date.now();
+
+    // Auto-clear corrupted session and retry
+    console.log('[WhatsApp] Clearing corrupted session after auth failure...');
+    const authDir = path.join(__dirname, '.wwebjs_auth');
+    try { await whatsappClient.destroy(); } catch (e) { /* ignore */ }
+    try { fs.rmSync(authDir, { recursive: true, force: true }); } catch (e) { /* ignore */ }
+    console.log('[WhatsApp] Session cleared. Retrying with fresh QR...');
+    safeInitialize();
 });
 
 whatsappClient.on('ready', () => {
-    console.log("==================================================");
-    console.log("  WhatsApp Connected & ready for message events!");
-    console.log("==================================================");
+    console.log('==================================================');
+    console.log('  WhatsApp Connected & ready for message events!');
+    console.log('==================================================');
 
+    clearAuthTimeout();
     whatsappStatus.status = 'connected';
     whatsappStatus.qr = null;
+    whatsappStatus.qrDataUrl = null;
     whatsappStatus.lastConnected = new Date().toISOString();
+    whatsappStatus.lastStateChange = Date.now();
     whatsappStatus.phone = whatsappClient.info?.wid?.user || null;
     whatsappStatus.pushname = whatsappClient.info?.pushname || null;
+    whatsappStatus.initAttempt = 0;
 });
 
 whatsappClient.on('disconnected', async (reason) => {
-    console.log("==================================================");
-    console.log("  WhatsApp Disconnected! Reason:", reason);
-    console.log("==================================================");
+    console.log('==================================================');
+    console.log('  WhatsApp Disconnected! Reason:', reason);
+    console.log('==================================================');
 
+    clearAuthTimeout();
     whatsappStatus.status = 'disconnected';
     whatsappStatus.qr = null;
+    whatsappStatus.qrDataUrl = null;
     whatsappStatus.phone = null;
     whatsappStatus.pushname = null;
+    whatsappStatus.lastStateChange = Date.now();
 
-    try {
-        console.log('[WhatsApp Bot] Attempting clean Puppeteer relaunch after disconnect...');
-        await whatsappClient.destroy();
-    } catch (e) {
-        console.error('Error destroying client on disconnect:', e);
-    }
-    try {
-        await whatsappClient.initialize();
-    } catch (e) {
-        console.error('Error re-initializing client on disconnect:', e);
-    }
+    // Auto-reconnect with cooldown protection
+    try { await whatsappClient.destroy(); } catch (e) { /* ignore */ }
+    console.log('[WhatsApp] Will attempt reconnect with cooldown...');
+    safeInitialize();
 });
 
 whatsappClient.on('message_create', async (msg) => {
@@ -1447,5 +1622,5 @@ app.listen(PORT, async () => {
     
     // Start WhatsApp Bot Singleton in the same process!
     console.log('Initializing WhatsApp Client singleton...');
-    whatsappClient.initialize();
+    safeInitialize();
 });
