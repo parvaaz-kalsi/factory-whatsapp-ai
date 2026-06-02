@@ -1,6 +1,15 @@
 const path = require('path');
 process.env.PUPPETEER_CACHE_DIR = path.join(__dirname, '.cache', 'puppeteer');
 
+// Global error handlers to prevent async crashes from taking down the Express web service
+process.on('unhandledRejection', (reason, promise) => {
+    console.error('[Unhandled Rejection Alert]:', reason);
+});
+
+process.on('uncaughtException', (err) => {
+    console.error('[Uncaught Exception Alert]:', err.message || err);
+});
+
 const express = require('express');
 const cors = require('cors');
 const { google } = require('googleapis');
@@ -16,24 +25,24 @@ const { GoogleGenerativeAI } = require("@google/generative-ai");
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 const TARGET_GROUP = "120363427181556541@g.us";
 
-const puppeteerOptions = {
-    headless: true,
-    userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-    args: [
-        '--no-sandbox',
-        '--disable-setuid-sandbox',
-        '--disable-dev-shm-usage',
-        '--disable-gpu'
-    ]
-};
-
-if (process.env.PUPPETEER_EXECUTABLE_PATH) {
-    puppeteerOptions.executablePath = process.env.PUPPETEER_EXECUTABLE_PATH;
-}
-
 const whatsappClient = new Client({
     authStrategy: new LocalAuth({ clientId: 'backend-whatsapp' }),
-    puppeteer: puppeteerOptions,
+    puppeteer: {
+        headless: true,
+        userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+        args: [
+            '--no-sandbox',
+            '--disable-setuid-sandbox',
+            '--disable-dev-shm-usage',
+            '--disable-gpu',
+            '--no-zygote',
+            '--single-process',
+            '--disable-renderer-backgrounding',
+            '--disable-background-timer-throttling',
+            '--disable-backgrounding-occluded-windows',
+            '--disable-ipc-flooding-protection'
+        ]
+    },
     webVersionCache: {
         type: 'remote',
         remotePath: 'https://raw.githubusercontent.com/wppconnect-team/wa-version/main/html/2.2412.54.html'
@@ -1447,5 +1456,13 @@ app.listen(PORT, async () => {
     
     // Start WhatsApp Bot Singleton in the same process!
     console.log('Initializing WhatsApp Client singleton...');
-    whatsappClient.initialize();
+    try {
+        whatsappClient.initialize().catch(err => {
+            console.error('Asynchronous failure during WhatsApp Client initialization:', err.message);
+            whatsappStatus.status = 'disconnected';
+        });
+    } catch (err) {
+        console.error('Synchronous failure during WhatsApp Client initialization:', err.message);
+        whatsappStatus.status = 'disconnected';
+    }
 });
