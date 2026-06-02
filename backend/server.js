@@ -25,29 +25,7 @@ const { GoogleGenerativeAI } = require("@google/generative-ai");
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 const TARGET_GROUP = "120363427181556541@g.us";
 
-const whatsappClient = new Client({
-    authStrategy: new LocalAuth({ clientId: 'backend-whatsapp' }),
-    puppeteer: {
-        headless: true,
-        userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-        args: [
-            '--no-sandbox',
-            '--disable-setuid-sandbox',
-            '--disable-dev-shm-usage',
-            '--disable-gpu',
-            '--no-zygote',
-            '--single-process',
-            '--disable-renderer-backgrounding',
-            '--disable-background-timer-throttling',
-            '--disable-backgrounding-occluded-windows',
-            '--disable-ipc-flooding-protection'
-        ]
-    },
-    webVersionCache: {
-        type: 'remote',
-        remotePath: 'https://raw.githubusercontent.com/wppconnect-team/wa-version/main/html/2.2412.54.html'
-    }
-});
+let whatsappClient;
 
 let whatsappStatus = {
     status: 'disconnected',
@@ -1207,6 +1185,8 @@ app.post('/api/whatsapp/logout', async (req, res) => {
         } catch (e) {
             console.log('Client already destroyed or error destroying:', e.message);
         }
+        
+        setupWhatsappClient();
         await whatsappClient.initialize();
         
         res.json({ success: true, message: 'Logged out successfully, re-initializing client' });
@@ -1226,6 +1206,8 @@ app.post('/api/whatsapp/reconnect', async (req, res) => {
         } catch (e) {
             console.log('Client already destroyed or error destroying:', e.message);
         }
+        
+        setupWhatsappClient();
         await whatsappClient.initialize();
         res.json({ success: true, message: 'Re-initialization started' });
     } catch (err) {
@@ -1300,161 +1282,189 @@ app.post('/api/test/simulate-message', async (req, res) => {
     }
 });
 
-whatsappClient.on('qr', qr => {
-    console.log("==================================================");
-    console.log("  Scan QR Code below to connect WhatsApp:");
-    console.log("==================================================");
-    qrcode.generate(qr, { small: true });
-
-    whatsappStatus.status = 'qr';
-    whatsappStatus.qr = qr;
-    whatsappStatus.phone = null;
-    whatsappStatus.pushname = null;
-});
-
-whatsappClient.on('authenticated', () => {
-    console.log("==================================================");
-    console.log("  WhatsApp Authenticated! Syncing history...");
-    console.log("==================================================");
-
-    whatsappStatus.status = 'authenticating';
-    whatsappStatus.qr = null;
-});
-
-whatsappClient.on('auth_failure', msg => {
-    console.error("==================================================");
-    console.error("  WhatsApp Authentication Failure:", msg);
-    console.error("==================================================");
-
-    whatsappStatus.status = 'disconnected';
-    whatsappStatus.qr = null;
-    whatsappStatus.phone = null;
-    whatsappStatus.pushname = null;
-});
-
-whatsappClient.on('ready', () => {
-    console.log("==================================================");
-    console.log("  WhatsApp Connected & ready for message events!");
-    console.log("==================================================");
-
-    whatsappStatus.status = 'connected';
-    whatsappStatus.qr = null;
-    whatsappStatus.lastConnected = new Date().toISOString();
-    whatsappStatus.phone = whatsappClient.info?.wid?.user || null;
-    whatsappStatus.pushname = whatsappClient.info?.pushname || null;
-});
-
-whatsappClient.on('disconnected', async (reason) => {
-    console.log("==================================================");
-    console.log("  WhatsApp Disconnected! Reason:", reason);
-    console.log("==================================================");
-
-    whatsappStatus.status = 'disconnected';
-    whatsappStatus.qr = null;
-    whatsappStatus.phone = null;
-    whatsappStatus.pushname = null;
-
-    try {
-        console.log('[WhatsApp Bot] Attempting clean Puppeteer relaunch after disconnect...');
-        await whatsappClient.destroy();
-    } catch (e) {
-        console.error('Error destroying client on disconnect:', e);
-    }
-    try {
-        await whatsappClient.initialize();
-    } catch (e) {
-        console.error('Error re-initializing client on disconnect:', e);
-    }
-});
-
-whatsappClient.on('message_create', async (msg) => {
-    try {
-        const chat = await msg.getChat();
-        if (!chat.isGroup) {
-            return;
+function setupWhatsappClient() {
+    console.log('[WhatsApp Client] Setting up new WhatsApp client instance...');
+    whatsappClient = new Client({
+        authStrategy: new LocalAuth({ clientId: 'backend-whatsapp' }),
+        puppeteer: {
+            headless: true,
+            userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+            args: [
+                '--no-sandbox',
+                '--disable-setuid-sandbox',
+                '--disable-dev-shm-usage',
+                '--disable-gpu',
+                '--no-zygote',
+                '--single-process',
+                '--disable-renderer-backgrounding',
+                '--disable-background-timer-throttling',
+                '--disable-backgrounding-occluded-windows',
+                '--disable-ipc-flooding-protection',
+                '--blink-settings=imagesEnabled=false'
+            ]
+        },
+        webVersionCache: {
+            type: 'remote',
+            remotePath: 'https://raw.githubusercontent.com/wppconnect-team/wa-version/main/html/2.2412.54.html'
         }
+    });
 
-        // Query database to see if this group is active
-        const activeCheck = await pool.query(
-            'SELECT 1 FROM whatsapp_groups WHERE group_id = $1 AND active = TRUE',
-            [chat.id._serialized]
-        );
-        if (activeCheck.rows.length === 0) {
-            return; // Ignore message if group is not active
+    whatsappClient.on('qr', qr => {
+        console.log("==================================================");
+        console.log("  Scan QR Code below to connect WhatsApp:");
+        console.log("==================================================");
+        qrcode.generate(qr, { small: true });
+
+        whatsappStatus.status = 'qr';
+        whatsappStatus.qr = qr;
+        whatsappStatus.phone = null;
+        whatsappStatus.pushname = null;
+    });
+
+    whatsappClient.on('authenticated', () => {
+        console.log("==================================================");
+        console.log("  WhatsApp Authenticated! Syncing history...");
+        console.log("==================================================");
+
+        whatsappStatus.status = 'authenticating';
+        whatsappStatus.qr = null;
+    });
+
+    whatsappClient.on('auth_failure', msg => {
+        console.error("==================================================");
+        console.error("  WhatsApp Authentication Failure:", msg);
+        console.error("==================================================");
+
+        whatsappStatus.status = 'disconnected';
+        whatsappStatus.qr = null;
+        whatsappStatus.phone = null;
+        whatsappStatus.pushname = null;
+    });
+
+    whatsappClient.on('ready', () => {
+        console.log("==================================================");
+        console.log("  WhatsApp Connected & ready for message events!");
+        console.log("==================================================");
+
+        whatsappStatus.status = 'connected';
+        whatsappStatus.qr = null;
+        whatsappStatus.lastConnected = new Date().toISOString();
+        whatsappStatus.phone = whatsappClient.info?.wid?.user || null;
+        whatsappStatus.pushname = whatsappClient.info?.pushname || null;
+    });
+
+    whatsappClient.on('disconnected', async (reason) => {
+        console.log("==================================================");
+        console.log("  WhatsApp Disconnected! Reason:", reason);
+        console.log("==================================================");
+
+        whatsappStatus.status = 'disconnected';
+        whatsappStatus.qr = null;
+        whatsappStatus.phone = null;
+        whatsappStatus.pushname = null;
+
+        try {
+            console.log('[WhatsApp Bot] Attempting clean Puppeteer relaunch after disconnect...');
+            await whatsappClient.destroy();
+        } catch (e) {
+            console.error('Error destroying client on disconnect:', e);
         }
+        
+        setupWhatsappClient();
+        whatsappClient.initialize().catch(err => {
+            console.error('Asynchronous failure during WhatsApp Client initialization after disconnect:', err.message);
+        });
+    });
 
-        const notifyName = msg.notifyName || msg._data?.notifyName || '';
-        let senderName = notifyName;
-
-        if (!senderName) {
-            try {
-                const contact = await msg.getContact();
-                senderName = contact.pushname || contact.name || contact.number || '';
-            } catch (err) {
-                console.error("Failed to get contact JID for sender identity:", err);
+    whatsappClient.on('message_create', async (msg) => {
+        try {
+            const chat = await msg.getChat();
+            if (!chat.isGroup) {
+                return;
             }
-        }
 
-        if (!senderName) {
-            const jid = msg.author || msg.from || '';
-            senderName = jid.split('@')[0] || 'WhatsApp User';
-        }
-
-        senderName = senderName.toString().trim();
-
-        console.log("\n==================");
-        console.log("Factory Group:", chat.name);
-        console.log("Resolved Sender JID:", senderName);
-        console.log("==================");
-
-        // ==========================
-        // TEXT MESSAGE
-        // ==========================
-        if (msg.body && !msg.hasMedia && msg.body.trim() !== "") {
-            console.log("Text:", msg.body);
-            const items = await processText(msg.body);
-            console.log("\nExtracted:");
-            console.log(items);
-
-            for (const item of items) {
-                console.log(`[WhatsApp Bot] Dispatching text request directly to DB. Sender: "${senderName}"`);
-                await savePendingRequest(item, senderName);
+            // Query database to see if this group is active
+            const activeCheck = await pool.query(
+                'SELECT 1 FROM whatsapp_groups WHERE group_id = $1 AND active = TRUE',
+                [chat.id._serialized]
+            );
+            if (activeCheck.rows.length === 0) {
+                return; // Ignore message if group is not active
             }
-        }
 
-        // ==========================
-        // VOICE NOTE
-        // ==========================
-        if (msg.hasMedia) {
-            const media = await msg.downloadMedia();
-            if (media.mimetype && media.mimetype.includes('audio')) {
-                console.log("Voice note received");
-                const filename = `voice_${Date.now()}.ogg`;
-                fs.writeFileSync(filename, Buffer.from(media.data, 'base64'));
-                console.log("Saved audio file:", filename);
+            const notifyName = msg.notifyName || msg._data?.notifyName || '';
+            let senderName = notifyName;
 
-                const items = await processAudio(filename);
+            if (!senderName) {
+                try {
+                    const contact = await msg.getContact();
+                    senderName = contact.pushname || contact.name || contact.number || '';
+                } catch (err) {
+                    console.error("Failed to get contact JID for sender identity:", err);
+                }
+            }
+
+            if (!senderName) {
+                const jid = msg.author || msg.from || '';
+                senderName = jid.split('@')[0] || 'WhatsApp User';
+            }
+
+            senderName = senderName.toString().trim();
+
+            console.log("\n==================");
+            console.log("Factory Group:", chat.name);
+            console.log("Resolved Sender JID:", senderName);
+            console.log("==================");
+
+            // ==========================
+            // TEXT MESSAGE
+            // ==========================
+            if (msg.body && !msg.hasMedia && msg.body.trim() !== "") {
+                console.log("Text:", msg.body);
+                const items = await processText(msg.body);
                 console.log("\nExtracted:");
                 console.log(items);
 
                 for (const item of items) {
-                    console.log(`[WhatsApp Bot] Dispatching audio request directly to DB. Sender: "${senderName}"`);
+                    console.log(`[WhatsApp Bot] Dispatching text request directly to DB. Sender: "${senderName}"`);
                     await savePendingRequest(item, senderName);
                 }
+            }
 
-                // Clean up temp audio file
-                try {
-                    fs.unlinkSync(filename);
-                    console.log("Temporary audio file cleaned up:", filename);
-                } catch (cleanupErr) {
-                    console.error("Error cleaning up audio file:", cleanupErr.message);
+            // ==========================
+            // VOICE NOTE
+            // ==========================
+            if (msg.hasMedia) {
+                const media = await msg.downloadMedia();
+                if (media.mimetype && media.mimetype.includes('audio')) {
+                    console.log("Voice note received");
+                    const filename = `voice_${Date.now()}.ogg`;
+                    fs.writeFileSync(filename, Buffer.from(media.data, 'base64'));
+                    console.log("Saved audio file:", filename);
+
+                    const items = await processAudio(filename);
+                    console.log("\nExtracted:");
+                    console.log(items);
+
+                    for (const item of items) {
+                        console.log(`[WhatsApp Bot] Dispatching audio request directly to DB. Sender: "${senderName}"`);
+                        await savePendingRequest(item, senderName);
+                    }
+
+                    // Clean up temp audio file
+                    try {
+                        fs.unlinkSync(filename);
+                        console.log("Temporary audio file cleaned up:", filename);
+                    } catch (cleanupErr) {
+                        console.error("Error cleaning up audio file:", cleanupErr.message);
+                    }
                 }
             }
+        } catch (err) {
+            console.log("\nERROR inside message_create listener:", err);
         }
-    } catch (err) {
-        console.log("\nERROR inside message_create listener:", err);
-    }
-});
+    });
+}
 
 // Start Server
 app.listen(PORT, async () => {
@@ -1468,6 +1478,7 @@ app.listen(PORT, async () => {
     
     // Start WhatsApp Bot Singleton in the same process!
     console.log('Initializing WhatsApp Client singleton...');
+    setupWhatsappClient();
     try {
         whatsappClient.initialize().catch(err => {
             console.error('Asynchronous failure during WhatsApp Client initialization:', err.message);
