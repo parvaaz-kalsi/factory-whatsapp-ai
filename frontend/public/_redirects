@@ -1,0 +1,3 @@
+/api/* https://factory-whatsapp-ai.onrender.com/api/:splat 200
+/audio/* https://factory-whatsapp-ai.onrender.com/audio/:splat 200
+/* /index.html 200
