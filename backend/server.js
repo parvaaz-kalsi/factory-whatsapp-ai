@@ -1461,6 +1461,17 @@ whatsappClient.on('qr', async (qr) => {
     }
 });
 
+whatsappClient.on('loading_screen', (percent, message) => {
+    console.log(`[WhatsApp] Loading screen: ${percent}% - ${message}`);
+    if (whatsappStatus.status !== 'authenticating' && whatsappStatus.status !== 'connected') {
+        whatsappStatus.status = 'authenticating';
+        whatsappStatus.qr = null;
+        whatsappStatus.qrDataUrl = null;
+        whatsappStatus.lastStateChange = Date.now();
+        startAuthTimeout();
+    }
+});
+
 whatsappClient.on('authenticated', () => {
     console.log('==================================================');
     console.log('  WhatsApp Authenticated! Syncing history...');
