@@ -6,6 +6,7 @@ export default defineConfig(({ mode }) => {
   // Load env file from the current directory
   const env = loadEnv(mode, process.cwd(), '')
   const backendUrl = env.VITE_BACKEND_URL || 'http://localhost:5000'
+  console.log('[Vite config] Backend proxy target URL:', backendUrl)
 
   return {
     plugins: [react()],
@@ -13,11 +14,23 @@ export default defineConfig(({ mode }) => {
       proxy: {
         '/api': {
           target: backendUrl,
-          changeOrigin: true
+          changeOrigin: true,
+          secure: false,
+          configure: (proxy) => {
+            proxy.on('error', (err, req, res) => {
+              console.error('[Vite Proxy Error /api]:', err.message);
+            });
+          }
         },
         '/audio': {
           target: backendUrl,
-          changeOrigin: true
+          changeOrigin: true,
+          secure: false,
+          configure: (proxy) => {
+            proxy.on('error', (err, req, res) => {
+              console.error('[Vite Proxy Error /audio]:', err.message);
+            });
+          }
         }
       }
     }

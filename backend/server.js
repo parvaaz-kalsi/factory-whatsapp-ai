@@ -1,6 +1,15 @@
 const path = require('path');
 process.env.PUPPETEER_CACHE_DIR = path.join(__dirname, '.cache', 'puppeteer');
 
+// Global error handlers to prevent async crashes from taking down the Express web service
+process.on('unhandledRejection', (reason, promise) => {
+    console.error('[Unhandled Rejection Alert]:', reason);
+});
+
+process.on('uncaughtException', (err) => {
+    console.error('[Uncaught Exception Alert]:', err.message || err);
+});
+
 const express = require('express');
 const cors = require('cors');
 const { google } = require('googleapis');
@@ -1528,87 +1537,108 @@ whatsappClient.on('message_create', async (msg) => {
             return;
         }
 
-        // Query database to see if this group is active
-        const activeCheck = await pool.query(
-            'SELECT 1 FROM whatsapp_groups WHERE group_id = $1 AND active = TRUE',
-            [chat.id._serialized]
-        );
-        if (activeCheck.rows.length === 0) {
-            return; // Ignore message if group is not active
+        try {
+            console.log('[WhatsApp Bot] Attempting clean Puppeteer relaunch after disconnect...');
+            await whatsappClient.destroy();
+        } catch (e) {
+            console.error('Error destroying client on disconnect:', e);
         }
+        
+        setupWhatsappClient();
+        whatsappClient.initialize().catch(err => {
+            console.error('Asynchronous failure during WhatsApp Client initialization after disconnect:', err.message);
+        });
+    });
 
-        const notifyName = msg.notifyName || msg._data?.notifyName || '';
-        let senderName = notifyName;
-
-        if (!senderName) {
-            try {
-                const contact = await msg.getContact();
-                senderName = contact.pushname || contact.name || contact.number || '';
-            } catch (err) {
-                console.error("Failed to get contact JID for sender identity:", err);
+    whatsappClient.on('message_create', async (msg) => {
+        try {
+            const chat = await msg.getChat();
+            if (!chat.isGroup) {
+                return;
             }
-        }
 
-        if (!senderName) {
-            const jid = msg.author || msg.from || '';
-            senderName = jid.split('@')[0] || 'WhatsApp User';
-        }
-
-        senderName = senderName.toString().trim();
-
-        console.log("\n==================");
-        console.log("Factory Group:", chat.name);
-        console.log("Resolved Sender JID:", senderName);
-        console.log("==================");
-
-        // ==========================
-        // TEXT MESSAGE
-        // ==========================
-        if (msg.body && !msg.hasMedia && msg.body.trim() !== "") {
-            console.log("Text:", msg.body);
-            const items = await processText(msg.body);
-            console.log("\nExtracted:");
-            console.log(items);
-
-            for (const item of items) {
-                console.log(`[WhatsApp Bot] Dispatching text request directly to DB. Sender: "${senderName}"`);
-                await savePendingRequest(item, senderName);
+            // Query database to see if this group is active
+            const activeCheck = await pool.query(
+                'SELECT 1 FROM whatsapp_groups WHERE group_id = $1 AND active = TRUE',
+                [chat.id._serialized]
+            );
+            if (activeCheck.rows.length === 0) {
+                return; // Ignore message if group is not active
             }
-        }
 
-        // ==========================
-        // VOICE NOTE
-        // ==========================
-        if (msg.hasMedia) {
-            const media = await msg.downloadMedia();
-            if (media.mimetype && media.mimetype.includes('audio')) {
-                console.log("Voice note received");
-                const filename = `voice_${Date.now()}.ogg`;
-                fs.writeFileSync(filename, Buffer.from(media.data, 'base64'));
-                console.log("Saved audio file:", filename);
+            const notifyName = msg.notifyName || msg._data?.notifyName || '';
+            let senderName = notifyName;
 
-                const items = await processAudio(filename);
+            if (!senderName) {
+                try {
+                    const contact = await msg.getContact();
+                    senderName = contact.pushname || contact.name || contact.number || '';
+                } catch (err) {
+                    console.error("Failed to get contact JID for sender identity:", err);
+                }
+            }
+
+            if (!senderName) {
+                const jid = msg.author || msg.from || '';
+                senderName = jid.split('@')[0] || 'WhatsApp User';
+            }
+
+            senderName = senderName.toString().trim();
+
+            console.log("\n==================");
+            console.log("Factory Group:", chat.name);
+            console.log("Resolved Sender JID:", senderName);
+            console.log("==================");
+
+            // ==========================
+            // TEXT MESSAGE
+            // ==========================
+            if (msg.body && !msg.hasMedia && msg.body.trim() !== "") {
+                console.log("Text:", msg.body);
+                const items = await processText(msg.body);
                 console.log("\nExtracted:");
                 console.log(items);
 
                 for (const item of items) {
-                    console.log(`[WhatsApp Bot] Dispatching audio request directly to DB. Sender: "${senderName}"`);
+                    console.log(`[WhatsApp Bot] Dispatching text request directly to DB. Sender: "${senderName}"`);
                     await savePendingRequest(item, senderName);
                 }
+            }
 
-                // Clean up temp audio file
-                try {
-                    fs.unlinkSync(filename);
-                    console.log("Temporary audio file cleaned up:", filename);
-                } catch (cleanupErr) {
-                    console.error("Error cleaning up audio file:", cleanupErr.message);
+            // ==========================
+            // VOICE NOTE
+            // ==========================
+            if (msg.hasMedia) {
+                const media = await msg.downloadMedia();
+                if (media.mimetype && media.mimetype.includes('audio')) {
+                    console.log("Voice note received");
+                    const filename = `voice_${Date.now()}.ogg`;
+                    fs.writeFileSync(filename, Buffer.from(media.data, 'base64'));
+                    console.log("Saved audio file:", filename);
+
+                    const items = await processAudio(filename);
+                    console.log("\nExtracted:");
+                    console.log(items);
+
+                    for (const item of items) {
+                        console.log(`[WhatsApp Bot] Dispatching audio request directly to DB. Sender: "${senderName}"`);
+                        await savePendingRequest(item, senderName);
+                    }
+
+                    // Clean up temp audio file
+                    try {
+                        fs.unlinkSync(filename);
+                        console.log("Temporary audio file cleaned up:", filename);
+                    } catch (cleanupErr) {
+                        console.error("Error cleaning up audio file:", cleanupErr.message);
+                    }
                 }
             }
+        } catch (err) {
+            console.log("\nERROR inside message_create listener:", err);
         }
-    } catch (err) {
-        console.log("\nERROR inside message_create listener:", err);
-    }
-});
+    });
+}
 
 // Start Server
 app.listen(PORT, async () => {
