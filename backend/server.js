@@ -1530,26 +1530,6 @@ whatsappClient.on('disconnected', async (reason) => {
     safeInitialize();
 });
 
-whatsappClient.on('message_create', async (msg) => {
-    try {
-        const chat = await msg.getChat();
-        if (!chat.isGroup) {
-            return;
-        }
-
-        try {
-            console.log('[WhatsApp Bot] Attempting clean Puppeteer relaunch after disconnect...');
-            await whatsappClient.destroy();
-        } catch (e) {
-            console.error('Error destroying client on disconnect:', e);
-        }
-        
-        setupWhatsappClient();
-        whatsappClient.initialize().catch(err => {
-            console.error('Asynchronous failure during WhatsApp Client initialization after disconnect:', err.message);
-        });
-    });
-
     whatsappClient.on('message_create', async (msg) => {
         try {
             const chat = await msg.getChat();
@@ -1638,7 +1618,6 @@ whatsappClient.on('message_create', async (msg) => {
             console.log("\nERROR inside message_create listener:", err);
         }
     });
-}
 
 // Start Server
 app.listen(PORT, async () => {
