@@ -112,8 +112,9 @@ function setupBaileysEvents(sock) {
 
             try {
                 whatsappStatus.qrDataUrl = await QRCode.toDataURL(qr, {
-                    width: 300, margin: 2,
-                    color: { dark: '#0f172a', light: '#ffffff' }
+                    width: 512, margin: 3,
+                    errorCorrectionLevel: 'M',
+                    color: { dark: '#000000', light: '#ffffff' }
                 });
                 console.log('[WhatsApp] QR data URL generated locally (instant)');
                 if (global.io) global.io.emit('dashboard_update');
