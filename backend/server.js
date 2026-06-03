@@ -127,6 +127,19 @@ async function safeInitialize() {
 const app = express();
 const PORT = process.env.PORT || 5000;
 
+const http = require('http');
+const { Server } = require('socket.io');
+const httpServer = http.createServer(app);
+const io = new Server(httpServer, {
+    cors: { origin: "*" }
+});
+global.io = io; // Expose globally to broadcast from anywhere
+
+io.on('connection', (socket) => {
+    console.log('[Socket.IO] New dashboard client connected:', socket.id);
+    socket.on('disconnect', () => console.log('[Socket.IO] Client disconnected:', socket.id));
+});
+
 app.use(cors());
 app.use(express.json());
 
@@ -189,6 +202,7 @@ async function savePendingRequest(item, senderName = 'WhatsApp User') {
 
         await pool.query(queryText, values);
         console.log(`Saved pending request successfully inside NeonDB: ID=${id}`);
+        if (global.io) global.io.emit('dashboard_update');
         return { success: true, id };
     } catch (err) {
         console.error('Error saving pending request directly to DB:', err);
@@ -267,7 +281,11 @@ async function generateWithRetry(prompt, isAudio = false, audioBase64 = null) {
 async function processText(text) {
     const inventoryContext = await fetchInventoryContext();
 
-    const prompt = `
+const prompt = `
+CRITICAL INSTRUCTION: First, determine if the message contains a clear, deliberate request for a factory machine part, tool, or material. 
+If the message is empty, unintelligible, gibberish, or just random chatter, you MUST IMMEDIATELY return an empty JSON array: []
+
+Only if there is a valid request, proceed with the following:
 Translate to English.
 
 The message may contain ONE or MULTIPLE items/parts being requested by factory workers.
@@ -307,6 +325,7 @@ Rules:
 - If "For Machine" is mentioned once for multiple items, apply it to ALL items
 - If Size or Material is not mentioned, leave it empty
 - Qty should be just the number (e.g. "1", "20", "12")
+- CRITICAL: If the message is empty, gibberish, or does NOT explicitly request a factory machine part, tool, or material, you MUST return an empty JSON array: []
 
 Return ONLY a raw JSON array with NO markdown, NO code fences, NO explanation.
 Example format:
@@ -367,7 +386,11 @@ async function processAudio(filename) {
     const inventoryContext = await fetchInventoryContext();
     const audioBase64 = fs.readFileSync(filename).toString('base64');
 
-    const prompt = `
+const prompt = `
+CRITICAL INSTRUCTION: First, determine if the audio contains a clear, deliberate human voice requesting a factory machine part, tool, or material. 
+If the audio is empty, contains only background noise, silence, or just random chatter, you MUST IMMEDIATELY return an empty JSON array: []
+
+Only if there is a valid request, proceed with the following:
 Translate to English.
 
 The message may contain ONE or MULTIPLE items/parts being requested by factory workers.
@@ -407,6 +430,7 @@ Rules:
 - If "For Machine" is mentioned once for multiple items, apply it to ALL items
 - If Size or Material is not mentioned, leave it empty
 - Qty should be just the number (e.g. "1", "20", "12")
+- CRITICAL: If the audio is empty, just background noise, gibberish, or does NOT explicitly request a factory machine part, tool, or material, you MUST return an empty JSON array: []
 
 Return ONLY a raw JSON array with NO markdown, NO code fences, NO explanation.
 Example format:
@@ -735,6 +759,7 @@ app.post('/api/pending', async (req, res) => {
         };
 
         console.log('Queued pending WhatsApp demand request to DB:', newItem.partName);
+        if (global.io) global.io.emit('dashboard_update');
         res.json({ success: true, item: newItem });
     } catch (err) {
         console.error('Error queuing request to DB:', err);
@@ -809,6 +834,7 @@ app.post('/api/pending/:id/approve', async (req, res) => {
         }
 
         console.log('Approved demand processed and status set to approved in DB:', partNameToCheck);
+        if (global.io) global.io.emit('dashboard_update');
         res.json({ success: true });
     } catch (err) {
         console.error('Error approving request:', err);
@@ -893,6 +919,7 @@ app.post('/api/pending/:id/receive', async (req, res) => {
         });
 
         console.log('Received demand written to sheet and stock quantity updated in DB:', finalReceivedRow.partName);
+        if (global.io) global.io.emit('dashboard_update');
         res.json({ success: true });
     } catch (err) {
         console.error('Error marking request as received:', err);
@@ -944,6 +971,7 @@ app.post('/api/pending/:id/edit', async (req, res) => {
         }
 
         console.log(`Successfully edited request by ${editorRoleName} and updated in DB:`, result.rows[0].part_name);
+        if (global.io) global.io.emit('dashboard_update');
         res.json({ success: true, item: result.rows[0] });
     } catch (err) {
         console.error('Error editing request in DB:', err);
@@ -992,6 +1020,7 @@ app.post('/api/pending/:id/forward', async (req, res) => {
         }
 
         console.log('Successfully forwarded request to Manager stage in DB:', result.rows[0].part_name);
+        if (global.io) global.io.emit('dashboard_update');
         res.json({ success: true, item: result.rows[0] });
     } catch (err) {
         console.error('Error forwarding request in DB:', err);
@@ -1314,6 +1343,7 @@ app.post('/api/whatsapp/groups/active', async (req, res) => {
             RETURNING *
         `;
         const result = await pool.query(queryText, [groupId, targetName, targetActive]);
+        if (global.io) global.io.emit('dashboard_update');
         res.json({ success: true, group: result.rows[0] });
     } catch (err) {
         console.error('Error in POST /api/whatsapp/groups/active:', err);
@@ -1341,6 +1371,7 @@ app.post('/api/whatsapp/logout', async (req, res) => {
         try { await whatsappClient.destroy(); } catch (e) { /* ignore */ }
         
         // Respond immediately, init in background
+        if (global.io) global.io.emit('dashboard_update');
         res.json({ success: true, message: 'Logged out. Generating new QR code...' });
         safeInitialize();
     } catch (err) {
@@ -1362,6 +1393,7 @@ app.post('/api/whatsapp/reconnect', async (req, res) => {
         try { await whatsappClient.destroy(); } catch (e) { /* ignore */ }
         
         // Respond immediately, init in background
+        if (global.io) global.io.emit('dashboard_update');
         res.json({ success: true, message: 'Re-initialization started. QR code will appear shortly.' });
         safeInitialize();
     } catch (err) {
@@ -1456,6 +1488,7 @@ whatsappClient.on('qr', async (qr) => {
             color: { dark: '#0f172a', light: '#ffffff' }
         });
         console.log('[WhatsApp] QR data URL generated locally (instant)');
+        if (global.io) global.io.emit('dashboard_update');
     } catch (err) {
         console.error('[WhatsApp] QR image generation failed:', err.message);
     }
@@ -1469,6 +1502,7 @@ whatsappClient.on('loading_screen', (percent, message) => {
         whatsappStatus.qrDataUrl = null;
         whatsappStatus.lastStateChange = Date.now();
         startAuthTimeout();
+        if (global.io) global.io.emit('dashboard_update');
     }
 });
 
@@ -1482,6 +1516,7 @@ whatsappClient.on('authenticated', () => {
     whatsappStatus.qrDataUrl = null;
     whatsappStatus.lastStateChange = Date.now();
     startAuthTimeout();
+    if (global.io) global.io.emit('dashboard_update');
 });
 
 whatsappClient.on('auth_failure', async (msg) => {
@@ -1503,6 +1538,7 @@ whatsappClient.on('auth_failure', async (msg) => {
     try { await whatsappClient.destroy(); } catch (e) { /* ignore */ }
     try { fs.rmSync(authDir, { recursive: true, force: true }); } catch (e) { /* ignore */ }
     console.log('[WhatsApp] Session cleared. Retrying with fresh QR...');
+    if (global.io) global.io.emit('dashboard_update');
     safeInitialize();
 });
 
@@ -1520,6 +1556,7 @@ whatsappClient.on('ready', () => {
     whatsappStatus.phone = whatsappClient.info?.wid?.user || null;
     whatsappStatus.pushname = whatsappClient.info?.pushname || null;
     whatsappStatus.initAttempt = 0;
+    if (global.io) global.io.emit('dashboard_update');
 });
 
 whatsappClient.on('disconnected', async (reason) => {
@@ -1538,11 +1575,24 @@ whatsappClient.on('disconnected', async (reason) => {
     // Auto-reconnect with cooldown protection
     try { await whatsappClient.destroy(); } catch (e) { /* ignore */ }
     console.log('[WhatsApp] Will attempt reconnect with cooldown...');
+    if (global.io) global.io.emit('dashboard_update');
     safeInitialize();
 });
 
+const processedMessageIds = new Set();
+
     whatsappClient.on('message_create', async (msg) => {
         try {
+            if (msg.id && msg.id.id) {
+                if (processedMessageIds.has(msg.id.id)) return;
+                processedMessageIds.add(msg.id.id);
+                
+                // Keep the Set size manageable to avoid memory leaks
+                if (processedMessageIds.size > 1000) {
+                    const iterator = processedMessageIds.values();
+                    processedMessageIds.delete(iterator.next().value);
+                }
+            }
             const chat = await msg.getChat();
             if (!chat.isGroup) {
                 return;
@@ -1631,7 +1681,7 @@ whatsappClient.on('disconnected', async (reason) => {
     });
 
 // Start Server
-app.listen(PORT, async () => {
+httpServer.listen(PORT, async () => {
     console.log(`==================================================`);
     console.log(`  Express Dashboard Backend running on port ${PORT}`);
     console.log(`  API Access: http://localhost:${PORT}/api/requests`);

@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { io } from 'socket.io-client';
 import { FiAlertTriangle, FiInfo, FiInbox, FiRefreshCw, FiUser } from 'react-icons/fi';
 import Metrics from './components/Metrics';
 import ApproverMetrics from './components/ApproverMetrics';
@@ -188,16 +189,28 @@ export default function App() {
   };
 
   useEffect(() => {
+    // Initial fetch on mount or tab change
     if (activeTab === 'whatsapp_settings') {
       fetchWhatsappStatus();
       fetchWhatsappGroups();
-      const interval = setInterval(() => {
-        fetchWhatsappStatus();
-        fetchWhatsappGroups();
-      }, 3000);
-      return () => clearInterval(interval);
+    } else {
+      fetchData();
     }
   }, [activeTab]);
+
+  useEffect(() => {
+    const backendUrl = import.meta.env.VITE_BACKEND_URL || window.location.origin;
+    const socket = io(backendUrl);
+
+    socket.on('dashboard_update', () => {
+      console.log('[Socket.IO] Dashboard update event received. Refreshing data...');
+      fetchData();
+    });
+
+    return () => {
+      socket.disconnect();
+    };
+  }, []);
 
   // Fetch all lists from backend
   const fetchData = async () => {
