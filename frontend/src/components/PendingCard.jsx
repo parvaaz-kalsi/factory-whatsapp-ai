@@ -1,4 +1,5 @@
 import React, { useState, useRef } from 'react';
+import { FiRefreshCw } from 'react-icons/fi';
 
 // Helper to determine category based on part name
 const getCategory = (partName = '') => {
@@ -46,7 +47,7 @@ const CardHeaderIllustration = ({ category }) => {
   );
 };
 
-export default function PendingCard({ item, voiceNotes = [], currentUserRole, onApprove, onReject, onForward, activeTab, onReceive, inventoryItems = [] }) {
+export default function PendingCard({ item, voiceNotes = [], currentUserRole, onApprove, onReject, onForward, activeTab, onReceive, inventoryItems = [], rejectingId }) {
   const category = getCategory(item.partName);
   
   // Custom voice player state
@@ -682,8 +683,12 @@ export default function PendingCard({ item, voiceNotes = [], currentUserRole, on
                     
                     <button 
                       onClick={() => onReject(item.id)}
+                      disabled={rejectingId === item.id}
                       className="btn-refresh"
                       style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '0.35rem',
                         flexGrow: 1,
                         justifyContent: 'center',
                         backgroundColor: 'var(--accent-rose-bg)',
@@ -691,10 +696,13 @@ export default function PendingCard({ item, voiceNotes = [], currentUserRole, on
                         color: 'var(--accent-rose-text)',
                         fontWeight: 600,
                         fontSize: '0.85rem',
-                        padding: '0.55rem'
+                        padding: '0.55rem',
+                        opacity: rejectingId === item.id ? 0.7 : 1
                       }}
                     >
-                      Reject
+                      {rejectingId === item.id ? (
+                        <><FiRefreshCw size={14} style={{ animation: 'spin 1s linear infinite' }} /> Rejecting...</>
+                      ) : 'Reject'}
                     </button>
                   </>
                 ) : (
@@ -719,8 +727,12 @@ export default function PendingCard({ item, voiceNotes = [], currentUserRole, on
                     
                     <button 
                       onClick={() => onReject(item.id)}
+                      disabled={rejectingId === item.id}
                       className="btn-refresh"
                       style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '0.35rem',
                         flexGrow: 1,
                         justifyContent: 'center',
                         backgroundColor: 'var(--accent-rose-bg)',
@@ -728,10 +740,13 @@ export default function PendingCard({ item, voiceNotes = [], currentUserRole, on
                         color: 'var(--accent-rose-text)',
                         fontWeight: 600,
                         fontSize: '0.85rem',
-                        padding: '0.55rem'
+                        padding: '0.55rem',
+                        opacity: rejectingId === item.id ? 0.7 : 1
                       }}
                     >
-                      Reject
+                      {rejectingId === item.id ? (
+                        <><FiRefreshCw size={14} style={{ animation: 'spin 1s linear infinite' }} /> Rejecting...</>
+                      ) : 'Reject'}
                     </button>
                   </>
                 )}

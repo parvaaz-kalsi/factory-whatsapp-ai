@@ -1045,9 +1045,9 @@ body {
 
 .whatsapp-qr-frame {
   position: relative;
-  width: 270px;
-  height: 270px;
-  padding: 10px;
+  width: 320px;
+  height: 320px;
+  padding: 12px;
   background-color: #ffffff;
   border: 1px solid var(--border-medium);
   border-radius: 12px;
@@ -1058,30 +1058,14 @@ body {
   overflow: hidden;
 }
 
-.whatsapp-qr-frame::before {
-  content: '';
-  position: absolute;
-  top: 10px;
-  left: 10px;
-  right: 10px;
-  height: 2px;
-  background: linear-gradient(to right, transparent, #10b981, transparent);
-  animation: scanLaser 2.5s cubic-bezier(0.4, 0, 0.2, 1) infinite;
-  box-shadow: 0 0 8px #10b981;
-  z-index: 10;
-}
-
-@keyframes scanLaser {
-  0% { top: 10px; }
-  50% { top: 260px; }
-  100% { top: 10px; }
-}
+/* Laser animation removed – it interferes with phone camera QR scanning */
 
 .whatsapp-qr-image {
   width: 100%;
   height: 100%;
   object-fit: contain;
   display: block;
+  image-rendering: pixelated;
 }
 
 .whatsapp-instructions {

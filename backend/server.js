@@ -18,7 +18,8 @@ const { Pool } = require('pg');
 require('dotenv').config();
 
 // WhatsApp Bot & AI Imports
-const { Client, LocalAuth } = require('whatsapp-web.js');
+const { makeWASocket, useMultiFileAuthState, DisconnectReason, fetchLatestBaileysVersion, downloadMediaMessage, isJidGroup } = require('@whiskeysockets/baileys');
+const pino = require('pino');
 const qrTerminal = require('qrcode-terminal');
 const QRCode = require('qrcode');
 const { GoogleGenerativeAI } = require("@google/generative-ai");
@@ -26,35 +27,8 @@ const { GoogleGenerativeAI } = require("@google/generative-ai");
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 const TARGET_GROUP = "120363427181556541@g.us";
 
-const puppeteerOptions = {
-    headless: true,
-    userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-    args: [
-        '--no-sandbox',
-        '--disable-setuid-sandbox',
-        '--disable-dev-shm-usage',
-        '--disable-gpu',
-        '--disable-extensions',
-        '--disable-background-networking',
-        '--disable-sync',
-        '--disable-translate',
-        '--no-first-run',
-        '--disable-features=TranslateUI',
-        '--single-process'
-    ]
-};
-
-if (process.env.PUPPETEER_EXECUTABLE_PATH) {
-    puppeteerOptions.executablePath = process.env.PUPPETEER_EXECUTABLE_PATH;
-}
-
-const whatsappClient = new Client({
-    authStrategy: new LocalAuth({ clientId: 'backend-whatsapp' }),
-    puppeteer: puppeteerOptions,
-    webVersionCache: {
-        type: 'local'
-    }
-});
+let whatsappClient = null;
+let currentSaveCreds = null;
 
 let whatsappStatus = {
     status: 'disconnected',
@@ -73,6 +47,11 @@ const RECONNECT_COOLDOWN_MS = 15000;
 let authTimeoutHandle = null;
 const AUTH_TIMEOUT_MS = 120000; // 2 minutes max in authenticating state
 
+// Gemini API Rate Limit Tracker (15 RPM Free Tier limit)
+let geminiRequestTimestamps = [];
+let lastBroadcastLimit = -1;
+const GEMINI_RPM_LIMIT = 15;
+
 function clearAuthTimeout() {
     if (authTimeoutHandle) {
         clearTimeout(authTimeoutHandle);
@@ -87,8 +66,9 @@ function startAuthTimeout() {
             console.log('[WhatsApp Watchdog] Stuck in authenticating for too long. Forcing re-init...');
             whatsappStatus.status = 'disconnected';
             whatsappStatus.lastStateChange = Date.now();
-            try { await whatsappClient.destroy(); } catch (e) { /* ignore */ }
-            safeInitialize();
+            if (whatsappClient) {
+                try { whatsappClient.end(new Error('Auth Timeout')); } catch (e) {}
+            }
         }
     }, AUTH_TIMEOUT_MS);
 }
@@ -103,20 +83,25 @@ async function safeInitialize() {
     lastReconnectTime = Date.now();
     whatsappStatus.initAttempt++;
     
-    // Clean up stale lockfile from crashed Chrome processes
-    const lockfile = path.join(__dirname, '.wwebjs_auth', 'session-backend-whatsapp', 'lockfile');
-    try { 
-        if (fs.existsSync(lockfile)) {
-            fs.unlinkSync(lockfile);
-            console.log('[WhatsApp] Cleaned up stale lockfile');
-        }
-    } catch (e) { 
-        console.log('[WhatsApp] Lockfile cleanup notice:', e.message);
-    }
-    
-    console.log(`[WhatsApp] Initializing client (attempt #${whatsappStatus.initAttempt})...`);
+    console.log(`[WhatsApp] Initializing Baileys client (attempt #${whatsappStatus.initAttempt})...`);
     try {
-        await whatsappClient.initialize();
+        const { state, saveCreds } = await useMultiFileAuthState('./.auth_info_baileys');
+        const { version, isLatest } = await fetchLatestBaileysVersion();
+        
+        whatsappClient = makeWASocket({
+            version,
+            logger: pino({ level: 'silent' }),
+            printQRInTerminal: false,
+            auth: state,
+            browser: ['Factory AI', 'Chrome', '1.0.0'],
+            generateHighQualityLinkPreview: true,
+            syncFullHistory: false
+        });
+        
+        currentSaveCreds = saveCreds;
+        whatsappClient.ev.on('creds.update', saveCreds);
+        
+        setupBaileysEvents(whatsappClient);
     } catch (err) {
         console.error('[WhatsApp] Initialize failed:', err.message);
         whatsappStatus.status = 'disconnected';
@@ -126,6 +111,37 @@ async function safeInitialize() {
 
 const app = express();
 const PORT = process.env.PORT || 5000;
+
+const http = require('http');
+const { Server } = require('socket.io');
+const httpServer = http.createServer(app);
+const io = new Server(httpServer, {
+    cors: { origin: "*" }
+});
+global.io = io; // Expose globally to broadcast from anywhere
+
+io.on('connection', (socket) => {
+    console.log('[Socket.IO] New dashboard client connected:', socket.id);
+    
+    // Immediately send current API limits on new connection
+    const currentCount = geminiRequestTimestamps.length;
+    socket.emit('api_limit_update', { count: currentCount, limit: GEMINI_RPM_LIMIT });
+
+    socket.on('disconnect', () => console.log('[Socket.IO] Client disconnected:', socket.id));
+});
+
+// Periodic broadcast of API limit decay
+setInterval(() => {
+    const now = Date.now();
+    geminiRequestTimestamps = geminiRequestTimestamps.filter(t => now - t < 60000);
+    const currentCount = geminiRequestTimestamps.length;
+    
+    // Only broadcast if the count changed (e.g. decayed)
+    if (currentCount !== lastBroadcastLimit && global.io) {
+        global.io.emit('api_limit_update', { count: currentCount, limit: GEMINI_RPM_LIMIT });
+        lastBroadcastLimit = currentCount;
+    }
+}, 2000);
 
 app.use(cors());
 app.use(express.json());
@@ -189,6 +205,7 @@ async function savePendingRequest(item, senderName = 'WhatsApp User') {
 
         await pool.query(queryText, values);
         console.log(`Saved pending request successfully inside NeonDB: ID=${id}`);
+        if (global.io) global.io.emit('dashboard_update');
         return { success: true, id };
     } catch (err) {
         console.error('Error saving pending request directly to DB:', err);
@@ -223,6 +240,13 @@ async function generateWithRetry(prompt, isAudio = false, audioBase64 = null) {
 
         for (let attempt = 0; attempt <= maxRetries; attempt++) {
             try {
+                // Track this request for RPM limiting
+                geminiRequestTimestamps.push(Date.now());
+                if (global.io) {
+                    lastBroadcastLimit = geminiRequestTimestamps.length;
+                    global.io.emit('api_limit_update', { count: lastBroadcastLimit, limit: GEMINI_RPM_LIMIT });
+                }
+
                 let result;
                 if (isAudio) {
                     result = await model.generateContent([
@@ -264,10 +288,43 @@ async function generateWithRetry(prompt, isAudio = false, audioBase64 = null) {
     return null; // All retries and models failed
 }
 
+function extractJsonFromResponse(raw) {
+    if (!raw) return null;
+    
+    const startIdx = raw.indexOf('[');
+    const endIdx = raw.lastIndexOf(']');
+    
+    if (startIdx !== -1 && endIdx !== -1 && endIdx > startIdx) {
+        try {
+            const parsed = JSON.parse(raw.substring(startIdx, endIdx + 1));
+            return Array.isArray(parsed) ? parsed : [parsed];
+        } catch (e) {
+            console.error("Failed to parse extracted JSON array:", e.message);
+        }
+    }
+    
+    const startObjIdx = raw.indexOf('{');
+    const endObjIdx = raw.lastIndexOf('}');
+    if (startObjIdx !== -1 && endObjIdx !== -1 && endObjIdx > startObjIdx) {
+        try {
+            const parsed = JSON.parse(raw.substring(startObjIdx, endObjIdx + 1));
+            return [parsed];
+        } catch (e) {
+            console.error("Failed to parse extracted JSON object:", e.message);
+        }
+    }
+    
+    return null;
+}
+
 async function processText(text) {
     const inventoryContext = await fetchInventoryContext();
 
-    const prompt = `
+const prompt = `
+CRITICAL INSTRUCTION: First, determine if the message contains a clear, deliberate request for a factory machine part, tool, or material. 
+If the message is empty, unintelligible, gibberish, or just random chatter, you MUST IMMEDIATELY return an empty JSON array: []
+
+Only if there is a valid request, proceed with the following:
 Translate to English.
 
 The message may contain ONE or MULTIPLE items/parts being requested by factory workers.
@@ -307,6 +364,7 @@ Rules:
 - If "For Machine" is mentioned once for multiple items, apply it to ALL items
 - If Size or Material is not mentioned, leave it empty
 - Qty should be just the number (e.g. "1", "20", "12")
+- CRITICAL: If the message is empty, gibberish, or does NOT explicitly request a factory machine part, tool, or material, you MUST return an empty JSON array: []
 
 Return ONLY a raw JSON array with NO markdown, NO code fences, NO explanation.
 Example format:
@@ -339,13 +397,12 @@ ${text}
 
     console.log("RAW GEMINI RESPONSE (text):", raw);
 
-    const cleaned = raw.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+    const parsed = extractJsonFromResponse(raw);
+    if (parsed) {
+        return parsed;
+    }
 
-    try {
-        const parsed = JSON.parse(cleaned);
-        return Array.isArray(parsed) ? parsed : [parsed];
-    } catch {
-        console.log("PARSE FAILED. Raw:", raw);
+    console.log("PARSE FAILED. Raw:", raw);
         return [{
             "Part Name": raw,
             "SKU": "",
@@ -360,14 +417,17 @@ ${text}
             "stockWarning": "",
             "suggestedMatch": ""
         }];
-    }
 }
 
 async function processAudio(filename) {
     const inventoryContext = await fetchInventoryContext();
     const audioBase64 = fs.readFileSync(filename).toString('base64');
 
-    const prompt = `
+const prompt = `
+CRITICAL INSTRUCTION: First, determine if the audio contains a clear, deliberate human voice requesting a factory machine part, tool, or material. 
+If the audio is empty, contains only background noise, silence, or just random chatter, you MUST IMMEDIATELY return an empty JSON array: []
+
+Only if there is a valid request, proceed with the following:
 Translate to English.
 
 The message may contain ONE or MULTIPLE items/parts being requested by factory workers.
@@ -407,6 +467,7 @@ Rules:
 - If "For Machine" is mentioned once for multiple items, apply it to ALL items
 - If Size or Material is not mentioned, leave it empty
 - Qty should be just the number (e.g. "1", "20", "12")
+- CRITICAL: If the audio is empty, just background noise, gibberish, or does NOT explicitly request a factory machine part, tool, or material, you MUST return an empty JSON array: []
 
 Return ONLY a raw JSON array with NO markdown, NO code fences, NO explanation.
 Example format:
@@ -436,13 +497,12 @@ Example format:
 
     console.log("RAW GEMINI RESPONSE (audio):", raw);
 
-    const cleaned = raw.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+    const parsed = extractJsonFromResponse(raw);
+    if (parsed) {
+        return parsed;
+    }
 
-    try {
-        const parsed = JSON.parse(cleaned);
-        return Array.isArray(parsed) ? parsed : [parsed];
-    } catch {
-        console.log("PARSE FAILED. Raw:", raw);
+    console.log("PARSE FAILED. Raw:", raw);
         return [{
             "Part Name": raw,
             "SKU": "",
@@ -457,7 +517,6 @@ Example format:
             "stockWarning": "",
             "suggestedMatch": ""
         }];
-    }
 }
 
 
@@ -735,6 +794,7 @@ app.post('/api/pending', async (req, res) => {
         };
 
         console.log('Queued pending WhatsApp demand request to DB:', newItem.partName);
+        if (global.io) global.io.emit('dashboard_update');
         res.json({ success: true, item: newItem });
     } catch (err) {
         console.error('Error queuing request to DB:', err);
@@ -809,6 +869,7 @@ app.post('/api/pending/:id/approve', async (req, res) => {
         }
 
         console.log('Approved demand processed and status set to approved in DB:', partNameToCheck);
+        if (global.io) global.io.emit('dashboard_update');
         res.json({ success: true });
     } catch (err) {
         console.error('Error approving request:', err);
@@ -893,6 +954,7 @@ app.post('/api/pending/:id/receive', async (req, res) => {
         });
 
         console.log('Received demand written to sheet and stock quantity updated in DB:', finalReceivedRow.partName);
+        if (global.io) global.io.emit('dashboard_update');
         res.json({ success: true });
     } catch (err) {
         console.error('Error marking request as received:', err);
@@ -944,6 +1006,7 @@ app.post('/api/pending/:id/edit', async (req, res) => {
         }
 
         console.log(`Successfully edited request by ${editorRoleName} and updated in DB:`, result.rows[0].part_name);
+        if (global.io) global.io.emit('dashboard_update');
         res.json({ success: true, item: result.rows[0] });
     } catch (err) {
         console.error('Error editing request in DB:', err);
@@ -992,6 +1055,7 @@ app.post('/api/pending/:id/forward', async (req, res) => {
         }
 
         console.log('Successfully forwarded request to Manager stage in DB:', result.rows[0].part_name);
+        if (global.io) global.io.emit('dashboard_update');
         res.json({ success: true, item: result.rows[0] });
     } catch (err) {
         console.error('Error forwarding request in DB:', err);
@@ -1314,6 +1378,7 @@ app.post('/api/whatsapp/groups/active', async (req, res) => {
             RETURNING *
         `;
         const result = await pool.query(queryText, [groupId, targetName, targetActive]);
+        if (global.io) global.io.emit('dashboard_update');
         res.json({ success: true, group: result.rows[0] });
     } catch (err) {
         console.error('Error in POST /api/whatsapp/groups/active:', err);
@@ -1333,16 +1398,21 @@ app.post('/api/whatsapp/logout', async (req, res) => {
         whatsappStatus.pushname = null;
         whatsappStatus.lastStateChange = Date.now();
 
-        try { await whatsappClient.logout(); } catch (e) {
-            console.log('Client logout notice:', e.message);
+        if (whatsappClient) {
+            try { await whatsappClient.logout(); } catch (e) {
+                console.log('Client logout notice:', e.message);
+            }
+            try { whatsappClient.end(new Error('Manual Logout')); } catch (e) { /* ignore */ }
         }
 
-        console.log('[WhatsApp Admin] Re-initializing after logout...');
-        try { await whatsappClient.destroy(); } catch (e) { /* ignore */ }
+        // Delete auth session so a fresh QR is generated
+        const authPath = path.join(__dirname, '.auth_info_baileys');
+        if (fs.existsSync(authPath)) fs.rmSync(authPath, { recursive: true, force: true });
         
         // Respond immediately, init in background
+        if (global.io) global.io.emit('dashboard_update');
         res.json({ success: true, message: 'Logged out. Generating new QR code...' });
-        safeInitialize();
+        setTimeout(() => safeInitialize(), 2000);
     } catch (err) {
         console.error('Error logging out WhatsApp client:', err);
         res.status(500).json({ error: 'Failed to logout client', details: err.message });
@@ -1359,11 +1429,14 @@ app.post('/api/whatsapp/reconnect', async (req, res) => {
         whatsappStatus.qrDataUrl = null;
         whatsappStatus.lastStateChange = Date.now();
         
-        try { await whatsappClient.destroy(); } catch (e) { /* ignore */ }
+        if (whatsappClient) {
+            try { whatsappClient.end(new Error('Manual Reconnect')); } catch (e) { /* ignore */ }
+        }
         
         // Respond immediately, init in background
+        if (global.io) global.io.emit('dashboard_update');
         res.json({ success: true, message: 'Re-initialization started. QR code will appear shortly.' });
-        safeInitialize();
+        setTimeout(() => safeInitialize(), 2000);
     } catch (err) {
         console.error('Error re-initializing WhatsApp client:', err);
         res.status(500).json({ error: 'Failed to re-initialize client', details: err.message });
@@ -1436,191 +1509,149 @@ app.post('/api/test/simulate-message', async (req, res) => {
     }
 });
 
-whatsappClient.on('qr', async (qr) => {
-    console.log('==================================================');
-    console.log('  Scan QR Code below to connect WhatsApp:');
-    console.log('==================================================');
-    qrTerminal.generate(qr, { small: true });
+function setupBaileysEvents(sock) {
+    sock.ev.on('connection.update', async (update) => {
+        const { connection, lastDisconnect, qr } = update;
 
-    clearAuthTimeout();
-    whatsappStatus.status = 'qr';
-    whatsappStatus.qr = qr;
-    whatsappStatus.phone = null;
-    whatsappStatus.pushname = null;
-    whatsappStatus.lastStateChange = Date.now();
+        if (qr) {
+            console.log('==================================================');
+            console.log('  Scan QR Code below to connect WhatsApp:');
+            console.log('==================================================');
+            qrTerminal.generate(qr, { small: true });
 
-    // Generate base64 QR image instantly (no external API needed)
-    try {
-        whatsappStatus.qrDataUrl = await QRCode.toDataURL(qr, {
-            width: 300, margin: 2,
-            color: { dark: '#0f172a', light: '#ffffff' }
-        });
-        console.log('[WhatsApp] QR data URL generated locally (instant)');
-    } catch (err) {
-        console.error('[WhatsApp] QR image generation failed:', err.message);
-    }
-});
+            clearAuthTimeout();
+            whatsappStatus.status = 'qr';
+            whatsappStatus.qr = qr;
+            whatsappStatus.phone = null;
+            whatsappStatus.pushname = null;
+            whatsappStatus.lastStateChange = Date.now();
 
-whatsappClient.on('authenticated', () => {
-    console.log('==================================================');
-    console.log('  WhatsApp Authenticated! Syncing history...');
-    console.log('==================================================');
+            try {
+                whatsappStatus.qrDataUrl = await QRCode.toDataURL(qr, {
+                    width: 512, margin: 3,
+                    errorCorrectionLevel: 'M',
+                    color: { dark: '#000000', light: '#ffffff' }
+                });
+                console.log('[WhatsApp] QR data URL generated locally (instant)');
+                if (global.io) global.io.emit('dashboard_update');
+            } catch (err) {
+                console.error('[WhatsApp] QR image generation failed:', err.message);
+            }
+        }
 
-    whatsappStatus.status = 'authenticating';
-    whatsappStatus.qr = null;
-    whatsappStatus.qrDataUrl = null;
-    whatsappStatus.lastStateChange = Date.now();
-    startAuthTimeout();
-});
+        if (connection === 'close') {
+            const shouldReconnect = lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut;
+            console.log('[WhatsApp] Connection closed due to', lastDisconnect?.error?.message || lastDisconnect?.error, 'reconnecting:', shouldReconnect);
+            
+            clearAuthTimeout();
+            whatsappStatus.status = 'disconnected';
+            whatsappStatus.qr = null;
+            whatsappStatus.qrDataUrl = null;
+            whatsappStatus.phone = null;
+            whatsappStatus.pushname = null;
+            whatsappStatus.lastStateChange = Date.now();
+            if (global.io) global.io.emit('dashboard_update');
 
-whatsappClient.on('auth_failure', async (msg) => {
-    console.error('==================================================');
-    console.error('  WhatsApp Authentication Failure:', msg);
-    console.error('==================================================');
+            if (shouldReconnect) {
+                safeInitialize();
+            } else {
+                console.log('[WhatsApp] Connection closed. You are logged out. Generating new QR...');
+                const authPath = path.join(__dirname, '.auth_info_baileys');
+                if (fs.existsSync(authPath)) fs.rmSync(authPath, { recursive: true, force: true });
+                // Auto-generate a new QR after logout so user can re-scan
+                setTimeout(() => safeInitialize(), 2000);
+            }
+        } else if (connection === 'open') {
+            console.log('==================================================');
+            console.log('  WhatsApp Connected & ready for message events!');
+            console.log('==================================================');
+            clearAuthTimeout();
+            whatsappStatus.status = 'connected';
+            whatsappStatus.qr = null;
+            whatsappStatus.qrDataUrl = null;
+            whatsappStatus.lastConnected = new Date().toISOString();
+            whatsappStatus.lastStateChange = Date.now();
+            whatsappStatus.phone = sock.user?.id?.split(':')[0] || null;
+            whatsappStatus.pushname = sock.user?.name || null;
+            whatsappStatus.initAttempt = 0;
+            if (global.io) global.io.emit('dashboard_update');
+        }
+    });
 
-    clearAuthTimeout();
-    whatsappStatus.status = 'disconnected';
-    whatsappStatus.qr = null;
-    whatsappStatus.qrDataUrl = null;
-    whatsappStatus.phone = null;
-    whatsappStatus.pushname = null;
-    whatsappStatus.lastStateChange = Date.now();
+    const processedMessageIds = new Set();
 
-    // Auto-clear corrupted session and retry
-    console.log('[WhatsApp] Clearing corrupted session after auth failure...');
-    const authDir = path.join(__dirname, '.wwebjs_auth');
-    try { await whatsappClient.destroy(); } catch (e) { /* ignore */ }
-    try { fs.rmSync(authDir, { recursive: true, force: true }); } catch (e) { /* ignore */ }
-    console.log('[WhatsApp] Session cleared. Retrying with fresh QR...');
-    safeInitialize();
-});
-
-whatsappClient.on('ready', () => {
-    console.log('==================================================');
-    console.log('  WhatsApp Connected & ready for message events!');
-    console.log('==================================================');
-
-    clearAuthTimeout();
-    whatsappStatus.status = 'connected';
-    whatsappStatus.qr = null;
-    whatsappStatus.qrDataUrl = null;
-    whatsappStatus.lastConnected = new Date().toISOString();
-    whatsappStatus.lastStateChange = Date.now();
-    whatsappStatus.phone = whatsappClient.info?.wid?.user || null;
-    whatsappStatus.pushname = whatsappClient.info?.pushname || null;
-    whatsappStatus.initAttempt = 0;
-});
-
-whatsappClient.on('disconnected', async (reason) => {
-    console.log('==================================================');
-    console.log('  WhatsApp Disconnected! Reason:', reason);
-    console.log('==================================================');
-
-    clearAuthTimeout();
-    whatsappStatus.status = 'disconnected';
-    whatsappStatus.qr = null;
-    whatsappStatus.qrDataUrl = null;
-    whatsappStatus.phone = null;
-    whatsappStatus.pushname = null;
-    whatsappStatus.lastStateChange = Date.now();
-
-    // Auto-reconnect with cooldown protection
-    try { await whatsappClient.destroy(); } catch (e) { /* ignore */ }
-    console.log('[WhatsApp] Will attempt reconnect with cooldown...');
-    safeInitialize();
-});
-
-    whatsappClient.on('message_create', async (msg) => {
+    sock.ev.on('messages.upsert', async (m) => {
         try {
-            const chat = await msg.getChat();
-            if (!chat.isGroup) {
-                return;
-            }
+            if (m.type !== 'notify') return;
+            for (const msg of m.messages) {
+                if (!msg.message || msg.key.fromMe) continue;
+                
+                const jid = msg.key.remoteJid;
+                if (!isJidGroup(jid)) continue;
 
-            // Query database to see if this group is active
-            const activeCheck = await pool.query(
-                'SELECT 1 FROM whatsapp_groups WHERE group_id = $1 AND active = TRUE',
-                [chat.id._serialized]
-            );
-            if (activeCheck.rows.length === 0) {
-                return; // Ignore message if group is not active
-            }
-
-            const notifyName = msg.notifyName || msg._data?.notifyName || '';
-            let senderName = notifyName;
-
-            if (!senderName) {
-                try {
-                    const contact = await msg.getContact();
-                    senderName = contact.pushname || contact.name || contact.number || '';
-                } catch (err) {
-                    console.error("Failed to get contact JID for sender identity:", err);
+                if (msg.key.id) {
+                    if (processedMessageIds.has(msg.key.id)) continue;
+                    processedMessageIds.add(msg.key.id);
+                    if (processedMessageIds.size > 1000) {
+                        const iterator = processedMessageIds.values();
+                        processedMessageIds.delete(iterator.next().value);
+                    }
                 }
-            }
 
-            if (!senderName) {
-                const jid = msg.author || msg.from || '';
-                senderName = jid.split('@')[0] || 'WhatsApp User';
-            }
+                // Query database to see if this group is active
+                const activeCheck = await pool.query(
+                    'SELECT 1 FROM whatsapp_groups WHERE group_id = $1 AND active = TRUE',
+                    [jid]
+                );
+                if (activeCheck.rows.length === 0) continue;
 
-            senderName = senderName.toString().trim();
+                let senderName = msg.pushName || msg.key.participant?.split('@')[0] || 'WhatsApp User';
+                senderName = senderName.toString().trim();
 
-            console.log("\n==================");
-            console.log("Factory Group:", chat.name);
-            console.log("Resolved Sender JID:", senderName);
-            console.log("==================");
+                console.log("\n==================");
+                console.log("Factory Group JID:", jid);
+                console.log("Resolved Sender JID:", senderName);
+                console.log("==================");
 
-            // ==========================
-            // TEXT MESSAGE
-            // ==========================
-            if (msg.body && !msg.hasMedia && msg.body.trim() !== "") {
-                console.log("Text:", msg.body);
-                const items = await processText(msg.body);
-                console.log("\nExtracted:");
-                console.log(items);
+                const messageType = Object.keys(msg.message)[0];
+                const textBody = msg.message?.conversation || msg.message?.extendedTextMessage?.text;
 
-                for (const item of items) {
-                    console.log(`[WhatsApp Bot] Dispatching text request directly to DB. Sender: "${senderName}"`);
-                    await savePendingRequest(item, senderName);
-                }
-            }
-
-            // ==========================
-            // VOICE NOTE
-            // ==========================
-            if (msg.hasMedia) {
-                const media = await msg.downloadMedia();
-                if (media.mimetype && media.mimetype.includes('audio')) {
+                if (textBody && textBody.trim() !== "") {
+                    console.log("Text:", textBody);
+                    const items = await processText(textBody);
+                    console.log("\nExtracted:", items);
+                    for (const item of items) {
+                        console.log(`[WhatsApp Bot] Dispatching text request directly to DB. Sender: "${senderName}"`);
+                        await savePendingRequest(item, senderName);
+                    }
+                } else if (messageType === 'audioMessage' || messageType === 'ptvMessage') {
                     console.log("Voice note received");
+                    const buffer = await downloadMediaMessage(msg, 'buffer', { }, { logger: pino({ level: 'silent' }) });
                     const filename = `voice_${Date.now()}.ogg`;
-                    fs.writeFileSync(filename, Buffer.from(media.data, 'base64'));
+                    fs.writeFileSync(filename, buffer);
                     console.log("Saved audio file:", filename);
 
                     const items = await processAudio(filename);
-                    console.log("\nExtracted:");
-                    console.log(items);
+                    console.log("\nExtracted:", items);
 
                     for (const item of items) {
                         console.log(`[WhatsApp Bot] Dispatching audio request directly to DB. Sender: "${senderName}"`);
                         await savePendingRequest(item, senderName);
                     }
 
-                    // Clean up temp audio file
-                    try {
-                        fs.unlinkSync(filename);
-                        console.log("Temporary audio file cleaned up:", filename);
-                    } catch (cleanupErr) {
+                    try { fs.unlinkSync(filename); } catch (cleanupErr) {
                         console.error("Error cleaning up audio file:", cleanupErr.message);
                     }
                 }
             }
         } catch (err) {
-            console.log("\nERROR inside message_create listener:", err);
+            console.log("\nERROR inside messages.upsert listener:", err);
         }
     });
+}
 
 // Start Server
-app.listen(PORT, async () => {
+httpServer.listen(PORT, async () => {
     console.log(`==================================================`);
     console.log(`  Express Dashboard Backend running on port ${PORT}`);
     console.log(`  API Access: http://localhost:${PORT}/api/requests`);

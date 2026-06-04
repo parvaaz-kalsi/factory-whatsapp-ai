@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { io } from 'socket.io-client';
 import { FiAlertTriangle, FiInfo, FiInbox, FiRefreshCw, FiUser } from 'react-icons/fi';
 import Metrics from './components/Metrics';
 import ApproverMetrics from './components/ApproverMetrics';
@@ -102,6 +103,12 @@ export default function App() {
   }, [activeTab, selectedInventoryMachine]);
 
   // WhatsApp Integration States
+  const [whatsappGroups, setWhatsappGroups] = useState([]);
+  
+  // Gemini API Rate Limit States
+  const [apiLimitCount, setApiLimitCount] = useState(0);
+  const [apiLimitMax, setApiLimitMax] = useState(15);
+
   const [whatsappStatus, setWhatsappStatus] = useState({
     status: 'disconnected',
     qr: null,
@@ -123,9 +130,15 @@ export default function App() {
   const customConfirm = (title, message) => {
     return new Promise((resolve) => {
       setGlobalModal({
-        isOpen: true, type: 'confirm', title, message,
-        onConfirm: () => { setGlobalModal({ isOpen: false }); resolve(true); },
-        onCancel: () => { setGlobalModal({ isOpen: false }); resolve(false); }
+        isOpen: true, type: 'confirm', title, message, isLoading: false,
+        onConfirm: () => { 
+          setGlobalModal(prev => ({ ...prev, isLoading: true }));
+          resolve(true); 
+        },
+        onCancel: () => { 
+          setGlobalModal({ isOpen: false }); 
+          resolve(false); 
+        }
       });
     });
   };
@@ -188,16 +201,33 @@ export default function App() {
   };
 
   useEffect(() => {
+    // Initial fetch on mount or tab change
     if (activeTab === 'whatsapp_settings') {
       fetchWhatsappStatus();
       fetchWhatsappGroups();
-      const interval = setInterval(() => {
-        fetchWhatsappStatus();
-        fetchWhatsappGroups();
-      }, 3000);
-      return () => clearInterval(interval);
+    } else {
+      fetchData();
     }
   }, [activeTab]);
+
+  useEffect(() => {
+    const backendUrl = import.meta.env.VITE_BACKEND_URL || (window.location.hostname === 'localhost' ? 'http://localhost:5000' : window.location.origin);
+    const socket = io(backendUrl);
+
+    socket.on('dashboard_update', () => {
+      console.log('[Socket.IO] Dashboard update event received. Refreshing data...');
+      fetchData();
+    });
+
+    socket.on('api_limit_update', (data) => {
+      setApiLimitCount(data.count);
+      setApiLimitMax(data.limit);
+    });
+
+    return () => {
+      socket.disconnect();
+    };
+  }, []);
 
   // Fetch all lists from backend
   const fetchData = async () => {
@@ -306,13 +336,13 @@ export default function App() {
   };
 
   // Handle Reject Action
-  const [isRejecting, setIsRejecting] = useState(false);
+  const [rejectingId, setRejectingId] = useState(null);
   const handleReject = async (id) => {
     if (!(await customConfirm('Confirm Rejection', 'Are you sure you want to reject and delete this request?'))) {
       return;
     }
     try {
-      setRefreshing(true);
+      setRejectingId(id);
       const response = await fetch(`/api/pending/${id}/reject`, {
         method: 'POST'
       });
@@ -324,7 +354,8 @@ export default function App() {
     } catch (err) {
       console.error('Error rejecting request:', err);
     } finally {
-      setRefreshing(false);
+      setRejectingId(null);
+      setGlobalModal(prev => ({ ...prev, isOpen: false }));
     }
   };
 
@@ -838,7 +869,31 @@ export default function App() {
           )}
         </div>
 
-        <div className="sidebar-footer" style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+        <div className="sidebar-footer" style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+          
+          {/* API Rate Limit Progress Bar (Sidebar) */}
+          <div style={{
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '0.35rem',
+            padding: '0 0.5rem'
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.65rem', fontWeight: 600, color: 'var(--text-secondary)' }}>
+              <span>API Limit (Gemini)</span>
+              <span style={{ color: apiLimitCount >= apiLimitMax ? '#ef4444' : apiLimitCount > (apiLimitMax * 0.7) ? '#f59e0b' : 'var(--text-secondary)' }}>
+                {apiLimitCount} / {apiLimitMax}
+              </span>
+            </div>
+            <div style={{ width: '100%', height: '4px', backgroundColor: 'var(--border-medium)', borderRadius: '9999px', overflow: 'hidden' }}>
+              <div style={{
+                height: '100%',
+                backgroundColor: apiLimitCount >= apiLimitMax ? '#ef4444' : apiLimitCount > (apiLimitMax * 0.7) ? '#f59e0b' : '#94a3b8',
+                width: `${Math.min((apiLimitCount / apiLimitMax) * 100, 100)}%`,
+                transition: 'all var(--transition-fast)'
+              }}></div>
+            </div>
+          </div>
+
           <button 
             onClick={() => {
               localStorage.removeItem('user');
@@ -1352,6 +1407,7 @@ export default function App() {
                               console.error('Logout error:', err);
                             } finally {
                               setRefreshing(false);
+                              setGlobalModal(prev => ({ ...prev, isOpen: false }));
                             }
                           }
                         }}
@@ -1366,8 +1422,15 @@ export default function App() {
 
                     {(whatsappStatus.status === 'disconnected' || whatsappStatus.status === 'qr') && (
                       <button 
-                        className="btn-whatsapp-action btn-whatsapp-action-primary"
-                        style={{ padding: '0.45rem 1rem', fontSize: '0.85rem' }}
+                        className="btn-whatsapp-action"
+                        style={{ 
+                          backgroundColor: '#2563eb', 
+                          color: 'white', 
+                          border: 'none',
+                          padding: '0.6rem 1.25rem',
+                          fontSize: '0.9rem',
+                          boxShadow: '0 4px 6px -1px rgba(37, 99, 235, 0.2), 0 2px 4px -1px rgba(37, 99, 235, 0.1)'
+                        }}
                         onClick={async () => {
                           try {
                             setRefreshing(true);
@@ -1381,10 +1444,14 @@ export default function App() {
                         }}
                         disabled={refreshing}
                       >
-                        <svg style={{ width: '16px', height: '16px', marginRight: '0.35rem' }} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 1121.21 8H18" />
-                        </svg>
-                        Relaunch Client
+                        <FiRefreshCw 
+                          size={16} 
+                          style={{ 
+                            marginRight: '0.35rem',
+                            animation: refreshing ? 'spin 1s linear infinite' : 'none' 
+                          }} 
+                        />
+                        {refreshing ? 'Relaunching...' : 'Relaunch Client'}
                       </button>
                     )}
                   </div>
@@ -1446,7 +1513,7 @@ export default function App() {
                     <div className="whatsapp-qr-section">
                       <div className="whatsapp-qr-frame">
                         <img 
-                          src={`https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(whatsappStatus.qr)}`} 
+                          src={whatsappStatus.qrDataUrl || `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(whatsappStatus.qr)}`} 
                           alt="WhatsApp pairing QR code"
                           className="whatsapp-qr-image"
                         />
@@ -2033,10 +2100,11 @@ export default function App() {
                                       </button>
                                       <button 
                                         className="btn-refresh" 
-                                        style={{ padding: '0.3rem 0.6rem', fontSize: '0.75rem', backgroundColor: 'var(--accent-rose-bg)', borderColor: '#fecaca', color: 'var(--accent-rose-text)' }}
+                                        style={{ padding: '0.3rem 0.6rem', fontSize: '0.75rem', backgroundColor: 'var(--accent-rose-bg)', borderColor: '#fecaca', color: 'var(--accent-rose-text)', opacity: rejectingId === item.id ? 0.7 : 1 }}
                                         onClick={() => handleReject(item.id)}
+                                        disabled={rejectingId === item.id}
                                       >
-                                        Reject
+                                        {rejectingId === item.id ? 'Rejecting...' : 'Reject'}
                                       </button>
                                     </>
                                   ) : (
@@ -2059,10 +2127,13 @@ export default function App() {
                                       </button>
                                       <button 
                                         className="btn-refresh" 
-                                        style={{ padding: '0.3rem 0.6rem', fontSize: '0.75rem', backgroundColor: 'var(--accent-rose-bg)', borderColor: '#fecaca', color: 'var(--accent-rose-text)' }}
+                                        style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', padding: '0.3rem 0.6rem', fontSize: '0.75rem', backgroundColor: 'var(--accent-rose-bg)', borderColor: '#fecaca', color: 'var(--accent-rose-text)', opacity: rejectingId === item.id ? 0.7 : 1 }}
                                         onClick={() => handleReject(item.id)}
+                                        disabled={rejectingId === item.id}
                                       >
-                                        Reject
+                                        {rejectingId === item.id ? (
+                                          <><FiRefreshCw size={12} style={{ animation: 'spin 1s linear infinite' }} /> Rejecting</>
+                                        ) : 'Reject'}
                                       </button>
                                     </>
                                   )}
@@ -2136,6 +2207,7 @@ export default function App() {
                         activeTab={activeTab}
                         onReceive={handleReceive}
                         inventoryItems={inventoryItems}
+                        rejectingId={rejectingId}
                       />
                     )}
                   </div>
@@ -2218,10 +2290,10 @@ export default function App() {
             </p>
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem' }}>
               {globalModal.type === 'confirm' && (
-                <button onClick={globalModal.onCancel} style={{ padding: '0.625rem 1.25rem', backgroundColor: '#f1f5f9', color: '#475569', border: 'none', borderRadius: '8px', fontWeight: 600, cursor: 'pointer', transition: 'all 0.2s', fontSize: '0.9rem' }} onMouseOver={e => e.target.style.backgroundColor = '#e2e8f0'} onMouseOut={e => e.target.style.backgroundColor = '#f1f5f9'}>Cancel</button>
+                <button onClick={globalModal.onCancel} disabled={globalModal.isLoading} style={{ padding: '0.625rem 1.25rem', backgroundColor: '#f1f5f9', color: '#475569', border: 'none', borderRadius: '8px', fontWeight: 600, cursor: globalModal.isLoading ? 'not-allowed' : 'pointer', transition: 'all 0.2s', fontSize: '0.9rem', opacity: globalModal.isLoading ? 0.6 : 1 }} onMouseOver={e => { if(!globalModal.isLoading) e.target.style.backgroundColor = '#e2e8f0'; }} onMouseOut={e => { if(!globalModal.isLoading) e.target.style.backgroundColor = '#f1f5f9'; }}>Cancel</button>
               )}
-              <button onClick={globalModal.onConfirm} style={{ padding: '0.625rem 1.25rem', backgroundColor: globalModal.type === 'confirm' ? '#ef4444' : 'var(--primary-color)', color: 'white', border: 'none', borderRadius: '8px', fontWeight: 600, cursor: 'pointer', transition: 'all 0.2s', fontSize: '0.9rem', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)' }} onMouseOver={e => e.target.style.filter = 'brightness(1.1)'} onMouseOut={e => e.target.style.filter = 'brightness(1)'}>
-                {globalModal.type === 'confirm' ? 'Proceed' : 'Okay'}
+              <button onClick={globalModal.onConfirm} disabled={globalModal.isLoading} style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', padding: '0.625rem 1.25rem', backgroundColor: globalModal.type === 'confirm' ? '#ef4444' : 'var(--primary-color)', color: 'white', border: 'none', borderRadius: '8px', fontWeight: 600, cursor: globalModal.isLoading ? 'not-allowed' : 'pointer', transition: 'all 0.2s', fontSize: '0.9rem', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)', opacity: globalModal.isLoading ? 0.7 : 1 }} onMouseOver={e => { if(!globalModal.isLoading) e.target.style.filter = 'brightness(1.1)'; }} onMouseOut={e => { if(!globalModal.isLoading) e.target.style.filter = 'brightness(1)'; }}>
+                {globalModal.isLoading ? <><FiRefreshCw size={14} style={{ animation: 'spin 1s linear infinite' }} /> Processing</> : (globalModal.type === 'confirm' ? 'Proceed' : 'Okay')}
               </button>
             </div>
           </div>
