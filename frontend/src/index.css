@@ -1161,4 +1161,50 @@ body {
   transform: translateY(-1px);
 }
 
+/* Print Styles for Demand List */
+@media print {
+  body {
+    background-color: #ffffff;
+    color: #000000;
+  }
+  
+  .sidebar,
+  .header-section,
+  .filter-dashboard,
+  .no-print,
+  .export-toolbar {
+    display: none !important;
+  }
+  
+  .app-container, .main-workspace {
+    margin: 0 !important;
+    padding: 0 !important;
+    width: 100% !important;
+  }
 
+  .main-workspace {
+    overflow: visible !important;
+  }
+  
+  .table-responsive {
+    box-shadow: none !important;
+    border: none !important;
+  }
+  
+  table {
+    width: 100% !important;
+    border-collapse: collapse !important;
+  }
+
+  th, td {
+    border: 1px solid #000 !important;
+    padding: 0.5rem !important;
+    color: #000 !important;
+    background: transparent !important;
+  }
+
+  th {
+    background-color: #f1f5f9 !important;
+    -webkit-print-color-adjust: exact;
+  }
+}

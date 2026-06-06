@@ -1,6 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { io } from 'socket.io-client';
-import { FiAlertTriangle, FiInfo, FiInbox, FiRefreshCw, FiUser } from 'react-icons/fi';
+import { FiAlertTriangle, FiInfo, FiInbox, FiRefreshCw, FiUser, FiDownload, FiPrinter } from 'react-icons/fi';
+import * as XLSX from 'xlsx';
+import { jsPDF } from 'jspdf';
+import autoTable from 'jspdf-autotable';
 import Metrics from './components/Metrics';
 import ApproverMetrics from './components/ApproverMetrics';
 import Filters from './components/Filters';
@@ -397,6 +400,89 @@ export default function App() {
     } finally {
       setRefreshing(false);
     }
+  };
+
+  // -------------------------------------------------------------
+  // Export Functionality
+  // -------------------------------------------------------------
+  const [exportStartDate, setExportStartDate] = useState('');
+  const [exportEndDate, setExportEndDate] = useState('');
+
+  const getFilteredExportData = () => {
+    let data = approvedRequests;
+    
+    // Filter by date range
+    if (exportStartDate) {
+      const start = new Date(exportStartDate);
+      start.setHours(0, 0, 0, 0);
+      data = data.filter(r => new Date(r.approvedAt || r.demandTimestamp) >= start);
+    }
+    if (exportEndDate) {
+      const end = new Date(exportEndDate);
+      end.setHours(23, 59, 59, 999);
+      data = data.filter(r => new Date(r.approvedAt || r.demandTimestamp) <= end);
+    }
+    
+    // Default behavior: Export only items that are approved but not yet received
+    data = data.filter(r => r.status === 'approved'); // 'received' requests will be filtered out
+    
+    return data.map(r => ({
+      'Part Name': r.partName || '—',
+      'Qty': r.qty || '—',
+      'Size': r.size || '—',
+      'Material': r.material || '—',
+      'Machine': r.machine || '—',
+      'Vendor': r.vendor || '—',
+      'Rate': r.rate || r.price || '—',
+      'Requested By': r.requestedBy || '—',
+      'Approved By': r.approvedBy || '—',
+      'Approval Date': r.approvedAt ? new Date(r.approvedAt).toLocaleDateString() : '—'
+    }));
+  };
+
+  const exportToExcel = () => {
+    const data = getFilteredExportData();
+    if (data.length === 0) return alert('No data available to export.');
+    const worksheet = XLSX.utils.json_to_sheet(data);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'Demand List');
+    XLSX.writeFile(workbook, 'Demand_List.xlsx');
+  };
+
+  const exportToPDF = () => {
+    const data = getFilteredExportData();
+    if (data.length === 0) return alert('No data available to export.');
+    const doc = new jsPDF();
+    doc.text('Demand List', 14, 15);
+    const tableColumn = Object.keys(data[0]);
+    const tableRows = data.map(row => Object.values(row));
+    
+    autoTable(doc, {
+      head: [tableColumn],
+      body: tableRows,
+      startY: 20,
+      styles: { fontSize: 8 }
+    });
+    doc.save('Demand_List.pdf');
+  };
+
+  const printDemandList = () => {
+    const data = getFilteredExportData();
+    if (data.length === 0) return alert('No data available to print.');
+    const doc = new jsPDF();
+    doc.text('Demand List', 14, 15);
+    const tableColumn = Object.keys(data[0]);
+    const tableRows = data.map(row => Object.values(row));
+    
+    autoTable(doc, {
+      head: [tableColumn],
+      body: tableRows,
+      startY: 20,
+      styles: { fontSize: 8 }
+    });
+    
+    doc.autoPrint();
+    window.open(doc.output('bloburl'), '_blank');
   };
 
   // Handle Inline Save Edit in Table View
@@ -1664,6 +1750,34 @@ export default function App() {
               uniqueMachines={uniqueMachines}
               uniqueVendors={uniqueVendors}
             />
+
+            {/* Export Toolbar */}
+            {activeTab === 'approved' && (
+              <div className="export-toolbar no-print" style={{ backgroundColor: 'var(--bg-card)', padding: '1.25rem', borderRadius: '12px', border: '1px solid var(--border-light)', boxShadow: 'var(--shadow-sm)', marginBottom: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                <h3 style={{ fontSize: '1rem', fontWeight: 600, color: 'var(--text-primary)', margin: 0 }}>Export Demand List</h3>
+                <div style={{ display: 'flex', gap: '1.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                    <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)' }}>Start Date</label>
+                    <input type="date" value={exportStartDate} onChange={e => setExportStartDate(e.target.value)} className="filter-select" />
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                    <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)' }}>End Date</label>
+                    <input type="date" value={exportEndDate} onChange={e => setExportEndDate(e.target.value)} className="filter-select" />
+                  </div>
+                  </div>
+                <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', marginTop: '0.5rem' }}>
+                  <button onClick={exportToExcel} className="btn-refresh" style={{ backgroundColor: '#10b981', color: 'white', border: 'none', padding: '0.5rem 1rem' }}>
+                    <FiDownload style={{ marginRight: '0.35rem' }} /> Export Excel
+                  </button>
+                  <button onClick={exportToPDF} className="btn-refresh" style={{ backgroundColor: '#ef4444', color: 'white', border: 'none', padding: '0.5rem 1rem' }}>
+                    <FiDownload style={{ marginRight: '0.35rem' }} /> Export PDF
+                  </button>
+                  <button onClick={printDemandList} className="btn-refresh" style={{ backgroundColor: '#3b82f6', color: 'white', border: 'none', padding: '0.5rem 1rem' }}>
+                    <FiPrinter style={{ marginRight: '0.35rem' }} /> Print Demand List
+                  </button>
+                </div>
+              </div>
+            )}
 
             {filteredRequests.length === 0 ? (
               <div className="empty-state">

@@ -12,7 +12,6 @@ process.on('uncaughtException', (err) => {
 
 const express = require('express');
 const cors = require('cors');
-const { google } = require('googleapis');
 const fs = require('fs');
 const { Pool } = require('pg');
 require('dotenv').config();
@@ -229,7 +228,17 @@ async function fetchInventoryContext() {
     }
 }
 
+let geminiMutex = Promise.resolve();
+
 async function generateWithRetry(prompt, isAudio = false, audioBase64 = null) {
+    let releaseMutex;
+    const mutexWait = new Promise(resolve => releaseMutex = resolve);
+    const oldMutex = geminiMutex;
+    geminiMutex = mutexWait;
+    
+    await oldMutex;
+
+    try {
     const models = ["gemini-2.5-flash-lite", "gemini-2.5-flash"];
     const maxRetries = 3;
     const delays = [2000, 4000, 6000];
@@ -272,7 +281,11 @@ async function generateWithRetry(prompt, isAudio = false, audioBase64 = null) {
                                          errMessage.includes('high demand') || 
                                          errMessage.includes('overload') || 
                                          errMessage.includes('Unavailable') ||
-                                         errMessage.includes('fetch');
+                                         errMessage.includes('fetch') ||
+                                         errMessage.includes('429') ||
+                                         errMessage.includes('Too Many Requests') ||
+                                         errMessage.includes('exhausted') ||
+                                         errMessage.includes('quota');
 
                 if (attempt < maxRetries && isTemporaryError) {
                     const delay = delays[attempt];
@@ -286,6 +299,10 @@ async function generateWithRetry(prompt, isAudio = false, audioBase64 = null) {
         }
     }
     return null; // All retries and models failed
+    } finally {
+        // Always release the lock for the next queued request
+        releaseMutex();
+    }
 }
 
 function extractJsonFromResponse(raw) {
@@ -330,34 +347,34 @@ Translate to English.
 The message may contain ONE or MULTIPLE items/parts being requested by factory workers.
 Cross-reference each request against the provided company's Master Inventory List below.
 
-INVENTORY MATCHING RULES:
-1. Match the requested part to the closest matching item in the Master Inventory.
-2. If an inventory match is found (even with spelling variations, informal names, abbreviations, or Hindi/Punjabi terms):
-   - Use the canonical "Part Name" from the inventory.
-   - Populate "SKU" with the inventory's SKU.
-   - Populate "Size", "Material", and "Vendor" with details from the matched inventory item if not explicitly overridden by the worker's message.
+EXTRACTION RULES:
+1. Extract "Part Name", "Size", "Material", "For Machine", and "Vendor" EXACTLY as requested in the raw text. Do NOT override or rewrite them with inventory details. For example, if they ask for "Level Gauge 3 inch from Parveen Hyd", Part Name = "Level Gauge", Size = "3 inch", Vendor = "Parveen Hyd".
+2. After extracting the raw request, check if there is a matching item in the Master Inventory.
+3. If an inventory match is found (even with spelling variations, informal names, abbreviations, or Hindi/Punjabi terms):
+   - Put the canonical inventory name, SKU, and details into the "suggestedMatch" field. (e.g., "Matches inventory: Level Bolt (SKU: 83), Vendor: SMT").
+   - Populate "SKU" with the matched SKU so the system can link it.
    - Populate "Available Stock", "Price", and "Category" from the matched inventory item.
    - If the requested quantity (Qty Required) exceeds the matched inventory item's stock (Stock), generate a detailed warning in the "stockWarning" field (e.g., "Requested 5, but only 2 available in stock").
-3. If no match is found:
-   - Perform standard extraction (leave SKU, Available Stock, Price, stockWarning empty).
+4. If NO inventory match is found:
+   - Leave SKU, Available Stock, Price, stockWarning empty.
    - If there is a similar item in the inventory that might be what they wanted, suggest it in the "suggestedMatch" field (e.g., "Did you mean back gauge pc (SKU: 137)?").
 
 MASTER INVENTORY:
 ${inventoryContext}
 
 For EACH item extract:
-- Part Name (canonical matched name or parsed name)
+- Part Name (EXACTLY as requested, do not use inventory name)
 - SKU (blank if not matched)
 - Qty Required (plain number only, e.g., "1", "20")
-- Size (use detail1/detail2 format from inventory if matched)
-- Material
+- Size (EXACTLY as requested)
+- Material (EXACTLY as requested)
 - Category (blank if not matched)
-- For Machine
-- Vendor
+- For Machine (EXACTLY as requested)
+- Vendor (EXACTLY as requested)
 - Price (blank if not matched)
 - Available Stock (blank if not matched)
 - stockWarning (blank if no stock issue)
-- suggestedMatch (blank if no suggestion)
+- suggestedMatch (blank if no suggestion, otherwise describe the matched inventory item)
 
 Rules:
 - If Vendor is mentioned once for multiple items, apply it to ALL items
@@ -433,34 +450,34 @@ Translate to English.
 The message may contain ONE or MULTIPLE items/parts being requested by factory workers.
 Cross-reference each request against the provided company's Master Inventory List below.
 
-INVENTORY MATCHING RULES:
-1. Match the requested part to the closest matching item in the Master Inventory.
-2. If an inventory match is found (even with spelling variations, informal names, abbreviations, or Hindi/Punjabi terms):
-   - Use the canonical "Part Name" from the inventory.
-   - Populate "SKU" with the inventory's SKU.
-   - Populate "Size", "Material", and "Vendor" with details from the matched inventory item if not explicitly overridden by the worker's message.
+EXTRACTION RULES:
+1. Extract "Part Name", "Size", "Material", "For Machine", and "Vendor" EXACTLY as requested in the raw text. Do NOT override or rewrite them with inventory details. For example, if they ask for "Level Gauge 3 inch from Parveen Hyd", Part Name = "Level Gauge", Size = "3 inch", Vendor = "Parveen Hyd".
+2. After extracting the raw request, check if there is a matching item in the Master Inventory.
+3. If an inventory match is found (even with spelling variations, informal names, abbreviations, or Hindi/Punjabi terms):
+   - Put the canonical inventory name, SKU, and details into the "suggestedMatch" field. (e.g., "Matches inventory: Level Bolt (SKU: 83), Vendor: SMT").
+   - Populate "SKU" with the matched SKU so the system can link it.
    - Populate "Available Stock", "Price", and "Category" from the matched inventory item.
    - If the requested quantity (Qty Required) exceeds the matched inventory item's stock (Stock), generate a detailed warning in the "stockWarning" field (e.g., "Requested 5, but only 2 available in stock").
-3. If no match is found:
-   - Perform standard extraction (leave SKU, Available Stock, Price, stockWarning empty).
+4. If NO inventory match is found:
+   - Leave SKU, Available Stock, Price, stockWarning empty.
    - If there is a similar item in the inventory that might be what they wanted, suggest it in the "suggestedMatch" field (e.g., "Did you mean back gauge pc (SKU: 137)?").
 
 MASTER INVENTORY:
 ${inventoryContext}
 
 For EACH item extract:
-- Part Name (canonical matched name or parsed name)
+- Part Name (EXACTLY as requested, do not use inventory name)
 - SKU (blank if not matched)
 - Qty Required (plain number only, e.g., "1", "20")
-- Size (use detail1/detail2 format from inventory if matched)
-- Material
+- Size (EXACTLY as requested)
+- Material (EXACTLY as requested)
 - Category (blank if not matched)
-- For Machine
-- Vendor
+- For Machine (EXACTLY as requested)
+- Vendor (EXACTLY as requested)
 - Price (blank if not matched)
 - Available Stock (blank if not matched)
 - stockWarning (blank if no stock issue)
-- suggestedMatch (blank if no suggestion)
+- suggestedMatch (blank if no suggestion, otherwise describe the matched inventory item)
 
 Rules:
 - If Vendor is mentioned once for multiple items, apply it to ALL items
@@ -523,17 +540,7 @@ Example format:
 // Serve local voice note audio files as static resources
 app.use('/audio', express.static(path.join(__dirname)));
 
-// Configure Google Sheets API
-const SPREADSHEET_ID = '14QSTB1DJeaY44Ec2WTA12znOW6L5AsLALhLLEedwVpI';
-const RANGE = 'Sheet1!A:I';
-
-async function getSheetsClient() {
-    const auth = new google.auth.GoogleAuth({
-        keyFile: 'credentials.json',
-        scopes: ['https://www.googleapis.com/auth/spreadsheets']
-    });
-    return google.sheets({ version: 'v4', auth });
-}
+// Configured to use NeonDB directly, Google Sheets dependency removed
 
 // -----------------------------------------------------------------------------
 // API Endpoints
@@ -568,50 +575,46 @@ app.get('/api/health', (req, res) => {
     res.redirect('/health');
 });
 
-// Fetch demand requests from Google Sheets
+// Fetch approved and received demands from NeonDB
 app.get('/api/requests', async (req, res) => {
     try {
-        const sheets = await getSheetsClient();
-        const response = await sheets.spreadsheets.values.get({
-            spreadsheetId: SPREADSHEET_ID,
-            range: RANGE
+        const queryText = `
+            SELECT * FROM pending_requests 
+            WHERE status IN ('approved', 'received') 
+            ORDER BY demand_timestamp DESC
+        `;
+        const result = await pool.query(queryText);
+
+        const requests = result.rows.map(row => {
+            return {
+                id: row.id,
+                partName: row.part_name || '',
+                qty: row.qty || '',
+                size: row.size || '',
+                material: row.material || '',
+                machine: row.machine || '',
+                vendor: row.vendor || '',
+                rate: row.rate || '',
+                requestedBy: row.requested_by || 'WhatsApp User',
+                approvedBy: row.approved_by || '',
+                approvedAt: row.approved_at,
+                receivedAt: row.received_at,
+                demandTimestamp: row.demand_timestamp,
+                status: row.status
+            };
         });
 
-        const rows = response.data.values || [];
-        if (rows.length === 0) {
-            return res.json([]);
-        }
-
-        // Headers row: ['PART NAME', 'QTY REQD', 'SIZE', 'MATERIAL', 'FOR MACHINE', 'VENDOR', 'REQUESTED BY', 'RECEIVED AT', 'DEMAND TIMESTAMP']
-        const headers = rows[0].map(h => h.toUpperCase());
-        const dataRows = rows.slice(1);
-
-        const requests = dataRows.map((row, index) => {
-            return {
-                id: index + 1,
-                partName: row[0] || '',
-                qty: row[1] || '',
-                size: row[2] || '',
-                material: row[3] || '',
-                machine: row[4] || '',
-                vendor: row[5] || '',
-                requestedBy: row[6] || '',
-                receivedAt: row[7] || '',
-                demandTimestamp: row[8] || ''
-            };
-        }).filter(item => item.partName || item.qty || item.machine); // Filter out entirely empty rows
-
         console.log('--- API RESPONSE SENT TO APPROVED SECTION ---');
-        console.log('Total Approved Requests:', requests.length);
+        console.log('Total Approved/Received Requests:', requests.length);
         if (requests.length > 0) {
-            console.log('Sample Approved Request Object:', JSON.stringify(requests[0], null, 2));
+            console.log('Sample Request Object:', JSON.stringify(requests[0], null, 2));
         }
         console.log('---------------------------------------------');
 
         res.json(requests);
     } catch (err) {
-        console.error('Error fetching sheet rows:', err);
-        res.status(500).json({ error: 'Failed to fetch data from Google Sheets' });
+        console.error('Error fetching approved requests from DB:', err);
+        res.status(500).json({ error: 'Failed to fetch data from database' });
     }
 });
 
@@ -919,7 +922,7 @@ app.post('/api/pending/:id/receive', async (req, res) => {
             console.warn(`[Inventory Stock Update Warning] No inventory record found for "${partNameToCheck}" to increase stock by ${receivedQtyNum}!`);
         }
 
-        // Construct final historical log and write to Google Sheets
+        // Final historical log structure
         const finalReceivedRow = {
             partName: dbRow.part_name || '',
             qty: dbRow.qty || '',
@@ -931,27 +934,6 @@ app.post('/api/pending/:id/receive', async (req, res) => {
             receivedAt: new Date().toISOString(),
             demandTimestamp: dbRow.demand_timestamp ? new Date(dbRow.demand_timestamp).toISOString() : ''
         };
-
-        // Append approved values (columns A-I) to Google Sheets
-        const sheets = await getSheetsClient();
-        await sheets.spreadsheets.values.append({
-            spreadsheetId: SPREADSHEET_ID,
-            range: RANGE,
-            valueInputOption: 'USER_ENTERED',
-            requestBody: {
-                values: [[
-                    finalReceivedRow.partName,
-                    finalReceivedRow.qty,
-                    finalReceivedRow.size,
-                    finalReceivedRow.material,
-                    finalReceivedRow.machine,
-                    finalReceivedRow.vendor,
-                    finalReceivedRow.requestedBy,
-                    finalReceivedRow.receivedAt,
-                    finalReceivedRow.demandTimestamp
-                ]]
-            }
-        });
 
         console.log('Received demand written to sheet and stock quantity updated in DB:', finalReceivedRow.partName);
         if (global.io) global.io.emit('dashboard_update');
@@ -1060,6 +1042,51 @@ app.post('/api/pending/:id/forward', async (req, res) => {
     } catch (err) {
         console.error('Error forwarding request in DB:', err);
         res.status(500).json({ error: 'Failed to forward pending request in database' });
+    }
+});
+
+// POST Approve a pending request (status = 'approved')
+app.post('/api/pending/:id/approve', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const approvedData = req.body;
+
+        const queryText = `
+            UPDATE pending_requests 
+            SET part_name = $1, qty = $2, size = $3, material = $4, machine = $5, vendor = $6, rate = $7,
+                status = 'approved', approved_by = 'Manager', approved_at = NOW()
+            WHERE id = $8
+            RETURNING *
+        `;
+
+        const values = [
+            approvedData.partName || '',
+            approvedData.qty || '',
+            approvedData.size || '',
+            approvedData.material || '',
+            approvedData.machine || '',
+            approvedData.vendor || '',
+            approvedData.price || approvedData.rate || '',
+            id
+        ];
+
+        console.log('--- SQL APPROVE PAYLOAD ---');
+        console.log('Query:', queryText.trim().replace(/\s+/g, ' '));
+        console.log('Parameters:', JSON.stringify(values, null, 2));
+        console.log('---------------------------');
+
+        const result = await pool.query(queryText, values);
+
+        if (result.rows.length === 0) {
+            return res.status(404).json({ error: 'Pending request not found' });
+        }
+
+        console.log('Successfully approved request in DB:', result.rows[0].part_name);
+        if (global.io) global.io.emit('dashboard_update');
+        res.json({ success: true, item: result.rows[0] });
+    } catch (err) {
+        console.error('Error approving request in DB:', err);
+        res.status(500).json({ error: 'Failed to approve pending request in database' });
     }
 });
 
@@ -1259,18 +1286,17 @@ app.get('/api/whatsapp/debug-chats', async (req, res) => {
         if (whatsappStatus.status !== 'connected') {
             return res.json({ error: 'Not connected', status: whatsappStatus.status });
         }
-        const chats = await whatsappClient.getChats();
-        const summary = chats.map(c => ({
-            name: c.name || c.id?._serialized || 'Unknown',
-            isGroup: c.isGroup,
-            id: c.id?._serialized
+        const groupsDict = await whatsappClient.groupFetchAllParticipating();
+        const groups = Object.values(groupsDict).map(g => ({
+            name: g.subject || g.id || 'Unknown',
+            isGroup: true,
+            id: g.id
         }));
-        const groups = summary.filter(c => c.isGroup);
         res.json({
-            totalChats: chats.length,
+            totalChats: groups.length,
             totalGroups: groups.length,
             groups: groups,
-            sampleChats: summary.slice(0, 10)
+            sampleChats: groups.slice(0, 10)
         });
     } catch (err) {
         res.json({ error: err.message });
@@ -1309,12 +1335,17 @@ app.get('/api/whatsapp/groups', async (req, res) => {
                     console.log('[WhatsApp Groups] Fetching live chats from WhatsApp client (uncached)...');
                     
                     // Fire and forget or await with timeout
-                    whatsappClient.getChats().then(chats => {
-                        console.log(`[WhatsApp Groups] Total chats fetched: ${chats.length}`);
-                        global.whatsappChatsCache.data = chats.filter(c => c.isGroup);
+                    whatsappClient.groupFetchAllParticipating().then(groupsDict => {
+                        const groups = Object.values(groupsDict);
+                        console.log(`[WhatsApp Groups] Total group chats fetched: ${groups.length}`);
+                        global.whatsappChatsCache.data = groups.map(g => ({
+                            id: { _serialized: g.id },
+                            name: g.subject,
+                            isGroup: true
+                        }));
                         global.whatsappChatsCache.lastFetch = Date.now();
                         global.whatsappChatsCache.fetching = false;
-                        console.log(`[WhatsApp Groups] Group chats found and cached: ${global.whatsappChatsCache.data.length}`);
+                        console.log(`[WhatsApp Groups] Group chats cached: ${global.whatsappChatsCache.data.length}`);
                     }).catch(err => {
                         console.error('[WhatsApp Groups] Error fetching live chats:', err.message);
                         global.whatsappChatsCache.fetching = false;
