@@ -25,12 +25,12 @@ export default function App() {
   const [loginError, setLoginError] = useState('');
   const [loginLoading, setLoginLoading] = useState(false);
 
-  const currentUserRole = currentUser 
-    ? (currentUser.role === 'editor' 
-        ? 'reviewer' 
-        : currentUser.role === 'approver' 
-          ? 'manager' 
-          : 'observer') 
+  const currentUserRole = currentUser
+    ? (currentUser.role === 'editor'
+      ? 'reviewer'
+      : currentUser.role === 'approver'
+        ? 'manager'
+        : 'observer')
     : null;
 
   // View switch and inline table editing states
@@ -76,15 +76,15 @@ export default function App() {
   const fetchInventory = async () => {
     try {
       setInventoryLoading(true);
-      const url = selectedInventoryMachine 
+      const url = selectedInventoryMachine
         ? `/api/inventory?machine=${encodeURIComponent(selectedInventoryMachine)}`
         : '/api/inventory';
-        
+
       const response = await fetch(url);
       if (response.ok) {
         const data = await response.json();
         setInventoryItems(data);
-        
+
         // Extract unique machine/group names if we retrieved the full inventory
         if (!selectedInventoryMachine) {
           const machines = Array.from(new Set(data.map(item => item.machine).filter(Boolean))).sort();
@@ -107,7 +107,7 @@ export default function App() {
 
   // WhatsApp Integration States
   const [whatsappGroups, setWhatsappGroups] = useState([]);
-  
+
   // Gemini API Rate Limit States
   const [apiLimitCount, setApiLimitCount] = useState(0);
   const [apiLimitMax, setApiLimitMax] = useState(15);
@@ -134,19 +134,19 @@ export default function App() {
     return new Promise((resolve) => {
       setGlobalModal({
         isOpen: true, type: 'confirm', title, message, isLoading: false,
-        onConfirm: () => { 
+        onConfirm: () => {
           setGlobalModal(prev => ({ ...prev, isLoading: true }));
-          resolve(true); 
+          resolve(true);
         },
-        onCancel: () => { 
-          setGlobalModal({ isOpen: false }); 
-          resolve(false); 
+        onCancel: () => {
+          setGlobalModal({ isOpen: false });
+          resolve(false);
         }
       });
     });
   };
 
-  const hasNoActiveGroups = whatsappStatus.status === 'connected' && 
+  const hasNoActiveGroups = whatsappStatus.status === 'connected' &&
     (!availableGroups || availableGroups.length === 0 || !availableGroups.some(g => g.active));
 
   const fetchWhatsappStatus = async () => {
@@ -410,7 +410,7 @@ export default function App() {
 
   const getFilteredExportData = () => {
     let data = approvedRequests;
-    
+
     // Filter by date range
     if (exportStartDate) {
       const start = new Date(exportStartDate);
@@ -422,10 +422,10 @@ export default function App() {
       end.setHours(23, 59, 59, 999);
       data = data.filter(r => new Date(r.approvedAt || r.demandTimestamp) <= end);
     }
-    
+
     // Default behavior: Export only items that are approved but not yet received
     data = data.filter(r => r.status === 'approved'); // 'received' requests will be filtered out
-    
+
     return data.map(r => ({
       'Part Name': r.partName || '—',
       'Qty': r.qty || '—',
@@ -456,7 +456,7 @@ export default function App() {
     doc.text('Demand List', 14, 15);
     const tableColumn = Object.keys(data[0]);
     const tableRows = data.map(row => Object.values(row));
-    
+
     autoTable(doc, {
       head: [tableColumn],
       body: tableRows,
@@ -473,14 +473,14 @@ export default function App() {
     doc.text('Demand List', 14, 15);
     const tableColumn = Object.keys(data[0]);
     const tableRows = data.map(row => Object.values(row));
-    
+
     autoTable(doc, {
       head: [tableColumn],
       body: tableRows,
       startY: 20,
       styles: { fontSize: 8 }
     });
-    
+
     doc.autoPrint();
     window.open(doc.output('bloburl'), '_blank');
   };
@@ -525,14 +525,14 @@ export default function App() {
       }
       return [];
     }
-    return activeTab === 'pending' 
+    return activeTab === 'pending'
       ? pendingRequests.filter(r => {
-          if (currentUserRole === 'reviewer') {
-            return !r.status || r.status === 'pending_review';
-          }
-          // Approver (manager) only sees requests forwarded by the Editor
-          return r.status === 'reviewed';
-        })
+        if (currentUserRole === 'reviewer') {
+          return !r.status || r.status === 'pending_review';
+        }
+        // Approver (manager) only sees requests forwarded by the Editor
+        return r.status === 'reviewed';
+      })
       : activeTab === 'receiving'
         ? pendingRequests.filter(r => r.status === 'approved')
         : approvedRequests;
@@ -664,8 +664,8 @@ export default function App() {
             />
           </div>
 
-          <button 
-            type="submit" 
+          <button
+            type="submit"
             className="login-button"
             disabled={loginLoading}
           >
@@ -686,13 +686,13 @@ export default function App() {
       {/* Left Sidebar Navigation */}
       <aside className="sidebar">
         <div className="sidebar-brand">AVARZ</div>
-        
+
         <div className="sidebar-section-label">General</div>
         <nav className="sidebar-menu">
           {currentUserRole === 'observer' ? (
             <>
               {/* Manager Tab: New Worker Demands */}
-              <button 
+              <button
                 className={`sidebar-menu-item ${activeTab === 'pending_review' ? 'active' : ''}`}
                 onClick={() => {
                   setActiveTab('pending_review');
@@ -705,7 +705,7 @@ export default function App() {
                 </svg>
                 <span style={{ flexGrow: 1 }}>New Worker Demands</span>
                 {pendingRequests.filter(r => !r.status || r.status === 'pending_review').length > 0 && (
-                  <span 
+                  <span
                     style={{
                       backgroundColor: '#ef4444',
                       color: '#ffffff',
@@ -722,7 +722,7 @@ export default function App() {
               </button>
 
               {/* Manager Tab: Pending Approval */}
-              <button 
+              <button
                 className={`sidebar-menu-item ${activeTab === 'reviewed' ? 'active' : ''}`}
                 onClick={() => {
                   setActiveTab('reviewed');
@@ -735,7 +735,7 @@ export default function App() {
                 </svg>
                 <span style={{ flexGrow: 1 }}>Pending Approval</span>
                 {pendingRequests.filter(r => r.status === 'reviewed').length > 0 && (
-                  <span 
+                  <span
                     style={{
                       backgroundColor: '#f59e0b',
                       color: '#ffffff',
@@ -752,7 +752,7 @@ export default function App() {
               </button>
 
               {/* Manager Tab: Approved Queue */}
-              <button 
+              <button
                 className={`sidebar-menu-item ${activeTab === 'approved_queue' ? 'active' : ''}`}
                 onClick={() => {
                   setActiveTab('approved_queue');
@@ -765,7 +765,7 @@ export default function App() {
                 </svg>
                 <span style={{ flexGrow: 1 }}>Approved Queue</span>
                 {pendingRequests.filter(r => r.status === 'approved').length > 0 && (
-                  <span 
+                  <span
                     style={{
                       backgroundColor: 'var(--accent-blue-text)',
                       color: '#ffffff',
@@ -782,7 +782,7 @@ export default function App() {
               </button>
 
               {/* Manager Tab: Approved History */}
-              <button 
+              <button
                 className={`sidebar-menu-item ${activeTab === 'approved' ? 'active' : ''}`}
                 onClick={() => {
                   setActiveTab('approved');
@@ -797,7 +797,7 @@ export default function App() {
               </button>
 
               {/* Manager Tab: Inventory Catalog */}
-              <button 
+              <button
                 className={`sidebar-menu-item ${activeTab === 'inventory' ? 'active' : ''}`}
                 onClick={() => {
                   setActiveTab('inventory');
@@ -812,7 +812,7 @@ export default function App() {
               </button>
 
               {/* Manager Tab: WhatsApp Integration */}
-              <button 
+              <button
                 className={`sidebar-menu-item ${activeTab === 'whatsapp_settings' ? 'active' : ''}`}
                 onClick={() => {
                   setActiveTab('whatsapp_settings');
@@ -829,7 +829,7 @@ export default function App() {
           ) : (
             <>
               {/* Pending Approvals Tab Button */}
-              <button 
+              <button
                 className={`sidebar-menu-item ${activeTab === 'pending' ? 'active' : ''}`}
                 onClick={() => {
                   setActiveTab('pending');
@@ -842,7 +842,7 @@ export default function App() {
                 </svg>
                 <span style={{ flexGrow: 1 }}>Pending Demands</span>
                 {pendingRequests.filter(r => currentUserRole === 'reviewer' ? (!r.status || r.status === 'pending_review') : r.status === 'reviewed').length > 0 && (
-                  <span 
+                  <span
                     style={{
                       backgroundColor: '#ef4444',
                       color: '#ffffff',
@@ -859,7 +859,7 @@ export default function App() {
               </button>
 
               {/* Receiving Queue Tab Button */}
-              <button 
+              <button
                 className={`sidebar-menu-item ${activeTab === 'receiving' ? 'active' : ''}`}
                 onClick={() => {
                   setActiveTab('receiving');
@@ -872,7 +872,7 @@ export default function App() {
                 </svg>
                 <span style={{ flexGrow: 1 }}>Receiving Queue</span>
                 {pendingRequests.filter(r => r.status === 'approved').length > 0 && (
-                  <span 
+                  <span
                     style={{
                       backgroundColor: 'var(--accent-blue-text)',
                       color: '#ffffff',
@@ -889,7 +889,7 @@ export default function App() {
               </button>
 
               {/* Approved History Tab Button */}
-              <button 
+              <button
                 className={`sidebar-menu-item ${activeTab === 'approved' ? 'active' : ''}`}
                 onClick={() => {
                   setActiveTab('approved');
@@ -904,7 +904,7 @@ export default function App() {
               </button>
 
               {/* Inventory Catalog Tab Button */}
-              <button 
+              <button
                 className={`sidebar-menu-item ${activeTab === 'inventory' ? 'active' : ''}`}
                 onClick={() => {
                   setActiveTab('inventory');
@@ -920,7 +920,7 @@ export default function App() {
 
               {/* WhatsApp Integration Tab Button */}
               {currentUserRole === 'manager' && (
-                <button 
+                <button
                   className={`sidebar-menu-item ${activeTab === 'whatsapp_settings' ? 'active' : ''}`}
                   onClick={() => {
                     setActiveTab('whatsapp_settings');
@@ -956,7 +956,7 @@ export default function App() {
         </div>
 
         <div className="sidebar-footer" style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
-          
+
           {/* API Rate Limit Progress Bar (Sidebar) */}
           <div style={{
             display: 'flex',
@@ -980,7 +980,7 @@ export default function App() {
             </div>
           </div>
 
-          <button 
+          <button
             onClick={() => {
               localStorage.removeItem('user');
               window.location.reload();
@@ -994,7 +994,7 @@ export default function App() {
             Sign Out
           </button>
         </div>
-</aside>
+      </aside>
 
       {/* Main Content Workspace */}
       <main className="main-workspace">
@@ -1002,16 +1002,16 @@ export default function App() {
         <header className="header-section">
           <div className="header-title-wrapper">
             <h1>
-              {activeTab === 'pending_review' 
-                ? 'New Worker Demands' 
-                : activeTab === 'reviewed' 
-                  ? 'Pending Approval' 
+              {activeTab === 'pending_review'
+                ? 'New Worker Demands'
+                : activeTab === 'reviewed'
+                  ? 'Pending Approval'
                   : activeTab === 'approved_queue'
                     ? 'Approved Queue'
-                    : activeTab === 'pending' 
-                      ? 'Pending Demands' 
-                      : activeTab === 'approved' 
-                        ? 'Approved Requests' 
+                    : activeTab === 'pending'
+                      ? 'Pending Demands'
+                      : activeTab === 'approved'
+                        ? 'Approved Requests'
                         : activeTab === 'receiving'
                           ? 'Receiving Queue'
                           : activeTab === 'whatsapp_settings'
@@ -1019,7 +1019,7 @@ export default function App() {
                             : 'Inventory Catalog'}
             </h1>
           </div>
-          
+
           <div className="header-controls">
 
             {/* Minimalist Search Bar */}
@@ -1036,20 +1036,20 @@ export default function App() {
                 />
               </div>
             )}
-            
+
             {/* Layout Switcher (Card / List Toggle) */}
             {activeTab !== 'whatsapp_settings' && (
-              <div style={{ 
-                display: 'flex', 
-                backgroundColor: '#f1f5f9', 
-                border: '1px solid var(--border-medium)', 
-                borderRadius: '9999px', 
-                padding: '3px', 
+              <div style={{
+                display: 'flex',
+                backgroundColor: '#f1f5f9',
+                border: '1px solid var(--border-medium)',
+                borderRadius: '9999px',
+                padding: '3px',
                 gap: '2px',
                 alignItems: 'center'
               }}>
-                <button 
-                  onClick={() => setViewMode('card')} 
+                <button
+                  onClick={() => setViewMode('card')}
                   style={{
                     border: 'none',
                     background: viewMode === 'card' ? '#ffffff' : 'none',
@@ -1072,8 +1072,8 @@ export default function App() {
                   </svg>
                   Card
                 </button>
-                <button 
-                  onClick={() => setViewMode('list')} 
+                <button
+                  onClick={() => setViewMode('list')}
                   style={{
                     border: 'none',
                     background: viewMode === 'list' ? '#ffffff' : 'none',
@@ -1101,25 +1101,25 @@ export default function App() {
 
             {/* Refresh / Sync Button */}
             {activeTab !== 'whatsapp_settings' && (
-              <button 
-                className={`btn-refresh ${refreshing || inventoryLoading ? 'spinning' : ''}`} 
+              <button
+                className={`btn-refresh ${refreshing || inventoryLoading ? 'spinning' : ''}`}
                 onClick={activeTab === 'inventory' ? fetchInventory : fetchData}
                 disabled={refreshing || inventoryLoading}
               >
-                <FiRefreshCw 
-                  size={16} 
-                  strokeWidth={2.5} 
-                  style={{ animation: (refreshing || inventoryLoading) ? 'spin 1s linear infinite' : 'none' }} 
+                <FiRefreshCw
+                  size={16}
+                  strokeWidth={2.5}
+                  style={{ animation: (refreshing || inventoryLoading) ? 'spin 1s linear infinite' : 'none' }}
                 />
-                {activeTab === 'inventory' 
-                  ? (inventoryLoading ? 'Loading...' : 'Refresh Inventory') 
+                {activeTab === 'inventory'
+                  ? (inventoryLoading ? 'Loading...' : 'Refresh Inventory')
                   : (refreshing ? 'Syncing...' : 'Sync Sheet')}
               </button>
             )}
 
             {/* User Profile Premium Badge */}
             {currentUser && (
-              <div 
+              <div
                 style={{
                   display: 'flex',
                   alignItems: 'center',
@@ -1144,14 +1144,14 @@ export default function App() {
                     {currentUser.role}
                   </span>
                 </div>
-                <div style={{ 
-                  display: 'flex', 
-                  alignItems: 'center', 
-                  justifyContent: 'center', 
-                  width: '32px', 
-                  height: '32px', 
-                  background: 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)', 
-                  color: 'white', 
+                <div style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  width: '32px',
+                  height: '32px',
+                  background: 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)',
+                  color: 'white',
                   borderRadius: '50%',
                   boxShadow: 'inset 0 2px 4px rgba(255,255,255,0.2), 0 2px 4px rgba(217, 119, 6, 0.2)'
                 }}>
@@ -1163,7 +1163,7 @@ export default function App() {
         </header>
 
         {hasNoActiveGroups && activeTab !== 'whatsapp_settings' && (
-          <div 
+          <div
             style={{
               backgroundColor: 'var(--accent-amber-bg)',
               border: '1px solid #fde047',
@@ -1186,7 +1186,7 @@ export default function App() {
               <strong style={{ display: 'block', marginBottom: '0.15rem' }}>No Active WhatsApp Groups Configured!</strong>
               The AI demand parser will ignore incoming messages until at least one target group is set to active.
               {currentUserRole === 'manager' && (
-                <button 
+                <button
                   onClick={() => setActiveTab('whatsapp_settings')}
                   style={{
                     background: 'none',
@@ -1216,7 +1216,7 @@ export default function App() {
         ) : activeTab === 'inventory' ? (
           /* INVENTORY CATALOG VIEW */
           <div className="inventory-container" style={{ marginTop: '1rem', display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
-            
+
             {/* Inventory Filters Row */}
             <div className="filter-dashboard" style={{ marginBottom: '1rem' }}>
               <div className="filter-group">
@@ -1276,12 +1276,12 @@ export default function App() {
                 {filteredInventory.map((item, index) => {
                   const isLowStock = item.stockQuantity === 0;
                   const category = (item.category || 'mechanical').toLowerCase();
-                  
+
                   return (
-                    <div 
-                      key={item.id || index} 
-                      className="demand-card" 
-                      style={{ 
+                    <div
+                      key={item.id || index}
+                      className="demand-card"
+                      style={{
                         borderColor: 'var(--border-medium)',
                         display: 'flex',
                         flexDirection: 'column'
@@ -1292,7 +1292,7 @@ export default function App() {
                         <svg className="header-illustration-svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
                           <path strokeLinecap="round" strokeLinejoin="round" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
                         </svg>
-                        <span 
+                        <span
                           className="status-badge"
                           style={{
                             position: 'absolute',
@@ -1307,12 +1307,12 @@ export default function App() {
                           {isLowStock ? 'Out of Stock' : `${item.stockQuantity} ${item.unit || 'Pcs.'}`}
                         </span>
                       </div>
-                      
+
                       <div className="demand-card-body" style={{ display: 'flex', flexDirection: 'column', flexGrow: 1 }}>
                         <h2 className="demand-part-name" style={{ marginBottom: '0.5rem' }}>
                           {item.partName || <span style={{ color: 'var(--text-muted)', fontStyle: 'italic' }}>Unnamed Item</span>}
                         </h2>
-                        
+
                         <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginBottom: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.35rem', flexWrap: 'wrap' }}>
                           <span style={{ fontFamily: 'monospace', fontWeight: 600, color: '#1d4ed8', backgroundColor: '#eff6ff', padding: '0.15rem 0.4rem', borderRadius: '4px' }}>
                             {item.sku || 'GEN-SKU'}
@@ -1320,7 +1320,7 @@ export default function App() {
                           <span style={{ color: 'var(--text-muted)' }}>|</span>
                           <span>Reg No: <strong>{item.regNo || '—'}</strong></span>
                         </div>
-                        
+
                         <div className="demand-machine" style={{ marginBottom: '0.75rem' }}>
                           <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                             <path strokeLinecap="round" strokeLinejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
@@ -1328,7 +1328,7 @@ export default function App() {
                           </svg>
                           {item.machine || 'General'}
                         </div>
-                        
+
                         <div className="specs-list" style={{ marginBottom: '1.25rem' }}>
                           <div className="spec-item">
                             <span className="spec-label">Size Specification</span>
@@ -1349,7 +1349,7 @@ export default function App() {
                             </span>
                           </div>
                         </div>
-                        
+
                         <div className="demand-card-footer" style={{ marginTop: 'auto', borderTop: '1px solid var(--border-light)', paddingTop: '0.75rem' }}>
                           <div className="demand-vendor">
                             <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -1391,11 +1391,11 @@ export default function App() {
                   </thead>
                   <tbody>
                     {filteredInventory.map((item, index) => {
-                       const isLowStock = item.stockQuantity === 0;
-                       return (
-                        <tr 
-                          key={item.id || index} 
-                          style={{ 
+                      const isLowStock = item.stockQuantity === 0;
+                      return (
+                        <tr
+                          key={item.id || index}
+                          style={{
                             borderBottom: index === filteredInventory.length - 1 ? 'none' : '1px solid var(--border-light)',
                             transition: 'background-color var(--transition-fast)'
                           }}
@@ -1406,7 +1406,7 @@ export default function App() {
                           <td style={{ padding: '1rem 1.25rem', color: 'var(--text-secondary)', fontWeight: 500 }}>{item.regNo}</td>
                           <td style={{ padding: '1rem 1.25rem', fontWeight: 600, color: 'var(--text-primary)' }}>{item.partName}</td>
                           <td style={{ padding: '1rem 1.25rem', color: 'var(--text-secondary)' }}>
-                            <span style={{ 
+                            <span style={{
                               display: 'inline-block',
                               padding: '0.25rem 0.6rem',
                               borderRadius: '6px',
@@ -1457,28 +1457,28 @@ export default function App() {
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
                     {/* Status Badge */}
-                    <span 
+                    <span
                       className="whatsapp-status-badge"
                       style={{
-                        backgroundColor: 
+                        backgroundColor:
                           whatsappStatus.status === 'connected' ? 'var(--accent-green-bg)' :
-                          whatsappStatus.status === 'authenticating' ? 'var(--accent-blue-bg)' :
-                          whatsappStatus.status === 'qr' ? 'var(--accent-amber-bg)' : 'var(--accent-rose-bg)',
+                            whatsappStatus.status === 'authenticating' ? 'var(--accent-blue-bg)' :
+                              whatsappStatus.status === 'qr' ? 'var(--accent-amber-bg)' : 'var(--accent-rose-bg)',
                         color:
                           whatsappStatus.status === 'connected' ? 'var(--accent-green-text)' :
-                          whatsappStatus.status === 'authenticating' ? 'var(--accent-blue-text)' :
-                          whatsappStatus.status === 'qr' ? 'var(--accent-amber-text)' : 'var(--accent-rose-text)'
+                            whatsappStatus.status === 'authenticating' ? 'var(--accent-blue-text)' :
+                              whatsappStatus.status === 'qr' ? 'var(--accent-amber-text)' : 'var(--accent-rose-text)'
                       }}
                     >
                       <span className={`status-dot status-dot-${whatsappStatus.status}`}></span>
                       {whatsappStatus.status === 'connected' ? 'Connected' :
-                       whatsappStatus.status === 'authenticating' ? 'Authenticating...' :
-                       whatsappStatus.status === 'qr' ? 'Awaiting Scan' : 'Disconnected'}
+                        whatsappStatus.status === 'authenticating' ? 'Authenticating...' :
+                          whatsappStatus.status === 'qr' ? 'Awaiting Scan' : 'Disconnected'}
                     </span>
 
                     {/* Moved Action Buttons */}
                     {whatsappStatus.status === 'connected' && (
-                      <button 
+                      <button
                         className="btn-whatsapp-action btn-whatsapp-action-danger"
                         style={{ padding: '0.45rem 1rem', fontSize: '0.85rem' }}
                         onClick={async () => {
@@ -1507,11 +1507,11 @@ export default function App() {
                     )}
 
                     {(whatsappStatus.status === 'disconnected' || whatsappStatus.status === 'qr') && (
-                      <button 
+                      <button
                         className="btn-whatsapp-action"
-                        style={{ 
-                          backgroundColor: '#2563eb', 
-                          color: 'white', 
+                        style={{
+                          backgroundColor: '#2563eb',
+                          color: 'white',
                           border: 'none',
                           padding: '0.6rem 1.25rem',
                           fontSize: '0.9rem',
@@ -1530,12 +1530,12 @@ export default function App() {
                         }}
                         disabled={refreshing}
                       >
-                        <FiRefreshCw 
-                          size={16} 
-                          style={{ 
+                        <FiRefreshCw
+                          size={16}
+                          style={{
                             marginRight: '0.35rem',
-                            animation: refreshing ? 'spin 1s linear infinite' : 'none' 
-                          }} 
+                            animation: refreshing ? 'spin 1s linear infinite' : 'none'
+                          }}
                         />
                         {refreshing ? 'Relaunching...' : 'Relaunch Client'}
                       </button>
@@ -1546,7 +1546,7 @@ export default function App() {
                 <div className="whatsapp-settings-body">
                   {/* Warning Alert Banner inside settings page if connected but no active groups */}
                   {hasNoActiveGroups && (
-                    <div 
+                    <div
                       style={{
                         backgroundColor: 'var(--accent-amber-bg)',
                         border: '1px solid #fde047',
@@ -1586,8 +1586,8 @@ export default function App() {
                       <div className="whatsapp-detail-item" style={{ gridColumn: 'span 2' }}>
                         <span className="whatsapp-detail-label">Last Connected Time</span>
                         <span className="whatsapp-detail-value">
-                          {whatsappStatus.lastConnected 
-                            ? new Date(whatsappStatus.lastConnected).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' }) 
+                          {whatsappStatus.lastConnected
+                            ? new Date(whatsappStatus.lastConnected).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })
                             : 'N/A'}
                         </span>
                       </div>
@@ -1598,8 +1598,8 @@ export default function App() {
                   {whatsappStatus.status === 'qr' && whatsappStatus.qr && (
                     <div className="whatsapp-qr-section">
                       <div className="whatsapp-qr-frame">
-                        <img 
-                          src={whatsappStatus.qrDataUrl || `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(whatsappStatus.qr)}`} 
+                        <img
+                          src={whatsappStatus.qrDataUrl || `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(whatsappStatus.qr)}`}
                           alt="WhatsApp pairing QR code"
                           className="whatsapp-qr-image"
                         />
@@ -1656,16 +1656,16 @@ export default function App() {
                     {availableGroups.length === 0 ? (
                       <div style={{ padding: '1.5rem', backgroundColor: '#f8fafc', borderRadius: '12px', textAlign: 'center', border: '1px dashed var(--border-medium)' }}>
                         <p style={{ fontSize: '0.875rem', color: 'var(--text-muted)' }}>
-                          {whatsappStatus.status === 'connected' 
-                            ? 'No active group chats found on this WhatsApp account.' 
+                          {whatsappStatus.status === 'connected'
+                            ? 'No active group chats found on this WhatsApp account.'
                             : 'Connect WhatsApp to fetch available groups.'}
                         </p>
                       </div>
                     ) : (
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
                         {availableGroups.map((group) => (
-                          <div 
-                            key={group.id} 
+                          <div
+                            key={group.id}
                             style={{
                               display: 'flex',
                               alignItems: 'center',
@@ -1685,7 +1685,7 @@ export default function App() {
                                 ID: {group.id}
                               </div>
                             </div>
-                            
+
                             <button
                               onClick={() => handleToggleGroupActive(group)}
                               className="btn-refresh"
@@ -1764,7 +1764,7 @@ export default function App() {
                     <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)' }}>End Date</label>
                     <input type="date" value={exportEndDate} onChange={e => setExportEndDate(e.target.value)} className="filter-select" />
                   </div>
-                  </div>
+                </div>
                 <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', marginTop: '0.5rem' }}>
                   <button onClick={exportToExcel} className="btn-refresh" style={{ backgroundColor: '#10b981', color: 'white', border: 'none', padding: '0.5rem 1rem' }}>
                     <FiDownload style={{ marginRight: '0.35rem' }} /> Export Excel
@@ -1784,8 +1784,8 @@ export default function App() {
                 <FiInbox size={56} color="var(--text-muted)" style={{ marginBottom: '1rem', opacity: 0.6 }} />
                 <h3>No Demands Found</h3>
                 <p>
-                  {activeTab === 'pending' 
-                    ? 'No requests are currently awaiting approval.' 
+                  {activeTab === 'pending'
+                    ? 'No requests are currently awaiting approval.'
                     : 'The historical database from Google Sheets is empty or matches no filters.'}
                 </p>
               </div>
@@ -1799,7 +1799,7 @@ export default function App() {
                 overflowX: 'auto',
                 marginTop: '1rem'
               }}>
-                
+
                 <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontFamily: 'var(--font-sans)', fontSize: '0.9rem' }}>
                   <thead>
                     <tr style={{ backgroundColor: '#f8fafc', borderBottom: '1px solid var(--border-medium)' }}>
@@ -1824,7 +1824,7 @@ export default function App() {
                     {filteredRequests.map((item, index) => {
                       const isEditingRow = editingRowId === item.id;
                       const isApproved = activeTab === 'approved' || item.status === 'approved';
-                      
+
                       // Options extracted dynamically from master inventory catalog for inline editing
                       const uniquePartNames = Array.from(new Set([
                         editFormData.partName,
@@ -1954,9 +1954,9 @@ export default function App() {
                       }
 
                       return (
-                        <tr 
+                        <tr
                           key={item.id || index}
-                          style={{ 
+                          style={{
                             borderBottom: index === filteredRequests.length - 1 ? 'none' : '1px solid var(--border-light)',
                             transition: 'background-color var(--transition-fast)'
                           }}
@@ -1964,7 +1964,7 @@ export default function App() {
                         >
                           {/* Status Badge */}
                           <td style={{ padding: '1rem 1.25rem' }}>
-                            <span 
+                            <span
                               className="status-badge"
                               style={{
                                 backgroundColor: statusBg,
@@ -1980,7 +1980,7 @@ export default function App() {
                           {/* P No. / SKU */}
                           <td style={{ padding: '1rem 1.25rem', fontFamily: 'monospace', fontWeight: 600, color: '#1d4ed8' }}>
                             {isEditingRow ? (
-                              <input 
+                              <input
                                 type="text"
                                 value={editFormData.sku}
                                 onChange={handleSkuChange}
@@ -1996,7 +1996,7 @@ export default function App() {
                           {/* Reg No. */}
                           <td style={{ padding: '1rem 1.25rem', color: 'var(--text-secondary)' }}>
                             {isEditingRow ? (
-                              <input 
+                              <input
                                 type="text"
                                 value={editFormData.regNo}
                                 onChange={handleRegNoChange}
@@ -2012,7 +2012,7 @@ export default function App() {
                           {/* Part Name */}
                           <td style={{ padding: '1rem 1.25rem', fontWeight: 600, color: 'var(--text-primary)' }}>
                             {isEditingRow ? (
-                              <input 
+                              <input
                                 type="text"
                                 list="inventory-parts-list"
                                 value={editFormData.partName}
@@ -2029,7 +2029,7 @@ export default function App() {
                           {/* Quantity */}
                           <td style={{ padding: '1rem 1.25rem', fontWeight: 500, color: 'var(--text-primary)' }}>
                             {isEditingRow ? (
-                              <input 
+                              <input
                                 type="text"
                                 value={editFormData.qty}
                                 onChange={(e) => setEditFormData({ ...editFormData, qty: e.target.value })}
@@ -2045,7 +2045,7 @@ export default function App() {
                           {/* Size Specs */}
                           <td style={{ padding: '1rem 1.25rem', color: 'var(--text-primary)' }}>
                             {isEditingRow ? (
-                              <input 
+                              <input
                                 type="text"
                                 value={editFormData.size}
                                 onChange={(e) => setEditFormData({ ...editFormData, size: e.target.value })}
@@ -2061,7 +2061,7 @@ export default function App() {
                           {/* Material */}
                           <td style={{ padding: '1rem 1.25rem', color: 'var(--text-secondary)' }}>
                             {isEditingRow ? (
-                              <input 
+                              <input
                                 type="text"
                                 list="inventory-materials-list"
                                 value={editFormData.material}
@@ -2078,7 +2078,7 @@ export default function App() {
                           {/* Machine */}
                           <td style={{ padding: '1rem 1.25rem', color: 'var(--text-secondary)' }}>
                             {isEditingRow ? (
-                              <input 
+                              <input
                                 type="text"
                                 list="inventory-machines-list"
                                 value={editFormData.machine}
@@ -2088,7 +2088,7 @@ export default function App() {
                                 style={{ width: '160px', padding: '0.35rem 0.6rem', fontSize: '0.85rem' }}
                               />
                             ) : (
-                              <span style={{ 
+                              <span style={{
                                 display: 'inline-block',
                                 padding: '0.25rem 0.5rem',
                                 borderRadius: '6px',
@@ -2105,7 +2105,7 @@ export default function App() {
                           {/* Vendor */}
                           <td style={{ padding: '1rem 1.25rem', color: 'var(--text-primary)', fontWeight: 500 }}>
                             {isEditingRow ? (
-                              <input 
+                              <input
                                 type="text"
                                 list="inventory-vendors-list"
                                 value={editFormData.vendor}
@@ -2132,7 +2132,7 @@ export default function App() {
                           {/* Rate */}
                           <td style={{ padding: '1rem 1.25rem', color: 'var(--text-primary)', fontWeight: 600 }}>
                             {isEditingRow ? (
-                              <input 
+                              <input
                                 type="text"
                                 value={editFormData.price}
                                 onChange={(e) => setEditFormData({ ...editFormData, price: e.target.value })}
@@ -2148,8 +2148,8 @@ export default function App() {
                           {(activeTab === 'pending' || activeTab === 'receiving') && currentUserRole !== 'observer' && (
                             <td style={{ padding: '1rem 1.25rem', textAlign: 'right' }}>
                               {activeTab === 'receiving' ? (
-                                <button 
-                                  className="btn-refresh" 
+                                <button
+                                  className="btn-refresh"
                                   style={{ padding: '0.3rem 0.6rem', fontSize: '0.75rem', backgroundColor: 'var(--accent-green-bg)', borderColor: '#bbf7d0', color: 'var(--accent-green-text)', fontWeight: 600 }}
                                   onClick={() => handleReceive(item.id)}
                                 >
@@ -2157,16 +2157,16 @@ export default function App() {
                                 </button>
                               ) : isEditingRow ? (
                                 <div style={{ display: 'inline-flex', gap: '0.35rem' }}>
-                                  <button 
-                                    className="btn-refresh" 
-                                    style={{ padding: '0.3rem 0.6rem', fontSize: '0.75rem', backgroundColor: 'var(--accent-green-bg)', borderColor: '#bbf7d0', color: 'var(--accent-green-text)' }} 
+                                  <button
+                                    className="btn-refresh"
+                                    style={{ padding: '0.3rem 0.6rem', fontSize: '0.75rem', backgroundColor: 'var(--accent-green-bg)', borderColor: '#bbf7d0', color: 'var(--accent-green-text)' }}
                                     onClick={() => handleSaveInlineEdit(item.id)}
                                   >
                                     Save
                                   </button>
-                                  <button 
-                                    className="btn-refresh" 
-                                    style={{ padding: '0.3rem 0.6rem', fontSize: '0.75rem', borderColor: '#fecaca', color: '#dc2626' }} 
+                                  <button
+                                    className="btn-refresh"
+                                    style={{ padding: '0.3rem 0.6rem', fontSize: '0.75rem', borderColor: '#fecaca', color: '#dc2626' }}
                                     onClick={() => setEditingRowId(null)}
                                   >
                                     Cancel
@@ -2175,9 +2175,9 @@ export default function App() {
                               ) : (
                                 <div style={{ display: 'inline-flex', gap: '0.35rem' }}>
                                   {/* Edit Button */}
-                                  <button 
-                                    className="btn-refresh" 
-                                    style={{ padding: '0.3rem 0.6rem', fontSize: '0.75rem', color: 'var(--accent-blue-text)' }} 
+                                  <button
+                                    className="btn-refresh"
+                                    style={{ padding: '0.3rem 0.6rem', fontSize: '0.75rem', color: 'var(--accent-blue-text)' }}
                                     onClick={() => {
                                       setEditingRowId(item.id);
                                       setEditFormData({
@@ -2197,8 +2197,8 @@ export default function App() {
                                   {currentUserRole === 'reviewer' ? (
                                     /* Reviewer Actions */
                                     <>
-                                      <button 
-                                        className="btn-refresh" 
+                                      <button
+                                        className="btn-refresh"
                                         style={{ padding: '0.3rem 0.6rem', fontSize: '0.75rem', backgroundColor: 'var(--accent-green-bg)', borderColor: '#bbf7d0', color: 'var(--accent-green-text)' }}
                                         onClick={() => handleForward(item.id, {
                                           partName: item.partName,
@@ -2212,8 +2212,8 @@ export default function App() {
                                       >
                                         Forward
                                       </button>
-                                      <button 
-                                        className="btn-refresh" 
+                                      <button
+                                        className="btn-refresh"
                                         style={{ padding: '0.3rem 0.6rem', fontSize: '0.75rem', backgroundColor: 'var(--accent-rose-bg)', borderColor: '#fecaca', color: 'var(--accent-rose-text)', opacity: rejectingId === item.id ? 0.7 : 1 }}
                                         onClick={() => handleReject(item.id)}
                                         disabled={rejectingId === item.id}
@@ -2224,8 +2224,8 @@ export default function App() {
                                   ) : (
                                     /* Manager Actions */
                                     <>
-                                      <button 
-                                        className="btn-refresh" 
+                                      <button
+                                        className="btn-refresh"
                                         style={{ padding: '0.3rem 0.6rem', fontSize: '0.75rem', backgroundColor: 'var(--accent-green-bg)', borderColor: '#bbf7d0', color: 'var(--accent-green-text)' }}
                                         onClick={() => handleApprove(item.id, {
                                           partName: item.partName,
@@ -2239,8 +2239,8 @@ export default function App() {
                                       >
                                         Approve
                                       </button>
-                                      <button 
-                                        className="btn-refresh" 
+                                      <button
+                                        className="btn-refresh"
                                         style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', padding: '0.3rem 0.6rem', fontSize: '0.75rem', backgroundColor: 'var(--accent-rose-bg)', borderColor: '#fecaca', color: 'var(--accent-rose-text)', opacity: rejectingId === item.id ? 0.7 : 1 }}
                                         onClick={() => handleReject(item.id)}
                                         disabled={rejectingId === item.id}
@@ -2286,16 +2286,16 @@ export default function App() {
               <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1.5rem', width: '100%', marginTop: '1rem' }}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '100%', gap: '2rem' }}>
                   {/* Left Chevron Button */}
-                  <button 
-                    className="btn-refresh" 
-                    disabled={currentPendingIndex === 0} 
+                  <button
+                    className="btn-refresh"
+                    disabled={currentPendingIndex === 0}
                     onClick={() => setCurrentPendingIndex(p => Math.max(0, p - 1))}
-                    style={{ 
-                      width: '46px', 
-                      height: '46px', 
-                      padding: 0, 
-                      borderRadius: '50%', 
-                      justifyContent: 'center', 
+                    style={{
+                      width: '46px',
+                      height: '46px',
+                      padding: 0,
+                      borderRadius: '50%',
+                      justifyContent: 'center',
                       flexShrink: 0,
                       opacity: currentPendingIndex === 0 ? 0.3 : 1,
                       cursor: currentPendingIndex === 0 ? 'not-allowed' : 'pointer',
@@ -2327,16 +2327,16 @@ export default function App() {
                   </div>
 
                   {/* Right Chevron Button */}
-                  <button 
-                    className="btn-refresh" 
-                    disabled={currentPendingIndex === filteredRequests.length - 1} 
+                  <button
+                    className="btn-refresh"
+                    disabled={currentPendingIndex === filteredRequests.length - 1}
                     onClick={() => setCurrentPendingIndex(p => Math.min(filteredRequests.length - 1, p + 1))}
-                    style={{ 
-                      width: '46px', 
-                      height: '46px', 
-                      padding: 0, 
-                      borderRadius: '50%', 
-                      justifyContent: 'center', 
+                    style={{
+                      width: '46px',
+                      height: '46px',
+                      padding: 0,
+                      borderRadius: '50%',
+                      justifyContent: 'center',
                       flexShrink: 0,
                       opacity: currentPendingIndex === filteredRequests.length - 1 ? 0.3 : 1,
                       cursor: currentPendingIndex === filteredRequests.length - 1 ? 'not-allowed' : 'pointer',
@@ -2354,12 +2354,12 @@ export default function App() {
                   <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', fontWeight: 600 }}>
                     Demand {currentPendingIndex + 1} of {filteredRequests.length}
                   </span>
-                  
+
                   {/* Slider Progress Bar */}
                   <div style={{ display: 'flex', gap: '0.35rem' }}>
                     {filteredRequests.map((_, i) => (
-                      <span 
-                        key={i} 
+                      <span
+                        key={i}
                         onClick={() => setCurrentPendingIndex(i)}
                         style={{
                           display: 'inline-block',
@@ -2379,10 +2379,10 @@ export default function App() {
               /* STANDARD GRID FORMAT FOR APPROVED LOGS */
               <div className="demands-grid">
                 {filteredRequests.map((item) => (
-                  <RequestCard 
-                    key={item.id} 
-                    item={item} 
-                    voiceNotes={voiceNotes} 
+                  <RequestCard
+                    key={item.id}
+                    item={item}
+                    voiceNotes={voiceNotes}
                   />
                 ))}
               </div>
@@ -2399,14 +2399,14 @@ export default function App() {
               {globalModal.type === 'confirm' ? <><FiAlertTriangle color="#ef4444" size={22} /> Confirm Action</> : <><FiInfo color="var(--primary-color)" size={22} /> Notice</>}
             </h3>
             <p style={{ fontSize: '0.95rem', color: 'var(--text-secondary)', marginBottom: '1.75rem', lineHeight: 1.5 }}>
-              {globalModal.title && <strong style={{color: 'var(--text-primary)', display: 'block', marginBottom: '0.25rem'}}>{globalModal.title}</strong>}
+              {globalModal.title && <strong style={{ color: 'var(--text-primary)', display: 'block', marginBottom: '0.25rem' }}>{globalModal.title}</strong>}
               {globalModal.message}
             </p>
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem' }}>
               {globalModal.type === 'confirm' && (
-                <button onClick={globalModal.onCancel} disabled={globalModal.isLoading} style={{ padding: '0.625rem 1.25rem', backgroundColor: '#f1f5f9', color: '#475569', border: 'none', borderRadius: '8px', fontWeight: 600, cursor: globalModal.isLoading ? 'not-allowed' : 'pointer', transition: 'all 0.2s', fontSize: '0.9rem', opacity: globalModal.isLoading ? 0.6 : 1 }} onMouseOver={e => { if(!globalModal.isLoading) e.target.style.backgroundColor = '#e2e8f0'; }} onMouseOut={e => { if(!globalModal.isLoading) e.target.style.backgroundColor = '#f1f5f9'; }}>Cancel</button>
+                <button onClick={globalModal.onCancel} disabled={globalModal.isLoading} style={{ padding: '0.625rem 1.25rem', backgroundColor: '#f1f5f9', color: '#475569', border: 'none', borderRadius: '8px', fontWeight: 600, cursor: globalModal.isLoading ? 'not-allowed' : 'pointer', transition: 'all 0.2s', fontSize: '0.9rem', opacity: globalModal.isLoading ? 0.6 : 1 }} onMouseOver={e => { if (!globalModal.isLoading) e.target.style.backgroundColor = '#e2e8f0'; }} onMouseOut={e => { if (!globalModal.isLoading) e.target.style.backgroundColor = '#f1f5f9'; }}>Cancel</button>
               )}
-              <button onClick={globalModal.onConfirm} disabled={globalModal.isLoading} style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', padding: '0.625rem 1.25rem', backgroundColor: globalModal.type === 'confirm' ? '#ef4444' : 'var(--primary-color)', color: 'white', border: 'none', borderRadius: '8px', fontWeight: 600, cursor: globalModal.isLoading ? 'not-allowed' : 'pointer', transition: 'all 0.2s', fontSize: '0.9rem', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)', opacity: globalModal.isLoading ? 0.7 : 1 }} onMouseOver={e => { if(!globalModal.isLoading) e.target.style.filter = 'brightness(1.1)'; }} onMouseOut={e => { if(!globalModal.isLoading) e.target.style.filter = 'brightness(1)'; }}>
+              <button onClick={globalModal.onConfirm} disabled={globalModal.isLoading} style={{ display: 'flex', color: 'black', alignItems: 'center', gap: '0.35rem', padding: '0.625rem 1.25rem', backgroundColor: globalModal.type === 'confirm' ? '#ef4444' : 'var(--primary-color)', color: 'white', border: 'none', borderRadius: '8px', fontWeight: 600, cursor: globalModal.isLoading ? 'not-allowed' : 'pointer', transition: 'all 0.2s', fontSize: '0.9rem', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)', opacity: globalModal.isLoading ? 0.7 : 1 }} onMouseOver={e => { if (!globalModal.isLoading) e.target.style.filter = 'brightness(1.1)'; }} onMouseOut={e => { if (!globalModal.isLoading) e.target.style.filter = 'brightness(1)'; }}>
                 {globalModal.isLoading ? <><FiRefreshCw size={14} style={{ animation: 'spin 1s linear infinite' }} /> Processing</> : (globalModal.type === 'confirm' ? 'Proceed' : 'Okay')}
               </button>
             </div>

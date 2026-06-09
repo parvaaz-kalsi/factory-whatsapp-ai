@@ -1,272 +1,52 @@
-================================================================================
-                    FACTORY WHATSAPP AI AUTOMATION BOT
-================================================================================
+# Factory WhatsApp AI Dashboard - Comprehensive Project Context
 
-Overview:
-This application is a WhatsApp automation bot that acts as an intelligent bridge
-between a factory WhatsApp group and a Google Sheet. It listens to a specific 
-group, processes incoming requests (both written text and voice notes), extracts
-key details of requested machinery parts using the Gemini 2.5 Flash API, and 
-appends the structured details to a Google Sheet.
+## Overview
+The Factory WhatsApp AI Dashboard is a comprehensive full-stack application designed to automate, track, and manage factory inventory demands. Factory workers send part requests via WhatsApp, which are intercepted by a backend bot, parsed by AI, matched against master inventory, and pushed to a live dashboard for review and approval by management.
 
---------------------------------------------------------------------------------
-1. COMPONENT ARCHITECTURE & WORKFLOW
---------------------------------------------------------------------------------
+## Tech Stack
+- **Frontend**: React (Vite), Vanilla CSS (Custom design system with rich aesthetics), Socket.io-client, jsPDF & SheetJS (for exports).
+- **Backend**: Node.js, Express, Socket.io (real-time updates), @whiskeysockets/baileys (WhatsApp Web API), @google/generative-ai (Gemini AI).
+- **Database**: NeonDB (PostgreSQL) - serves as the single source of truth for both `inventory` and `pending_requests`.
 
-+------------------+     Text/Voice     +-----------------------+
-|  WhatsApp Group  | -----------------> |   WhatsApp Client     |
-| (TARGET_GROUP ID)|                    | (whatsapp-web.js auth)|
-+------------------+                    +-----------------------+
-                                                    |
-                                                    | Message Body
-                                                    v
-                                        +-----------------------+
-                                        |    Gemini AI Engine   |
-                                        |   (gemini-2.5-flash)  |
-                                        +-----------------------+
-                                                    |
-                                                    | Structured JSON Array
-                                                    v
-                                        +-----------------------+
-                                        |   Google Sheets API   |
-                                        |  (google.auth / v4)   |
-                                        +-----------------------+
-                                                    |
-                                                    | Append Rows
-                                                    v
-                                        +-----------------------+
-                                        |  Connected Spreadsheet|
-                                        |  (Sheet1 Columns A-F) |
-                                        +-----------------------+
+## Core Architecture & Workflow
 
+### 1. Data Ingestion (WhatsApp -> AI -> DB)
+1. **WhatsApp Listener**: The backend runs a Baileys client simulating a WhatsApp Web session. It listens to active, configured WhatsApp groups.
+2. **AI Parsing**: When a message arrives, it is placed in a Mutex queue (`geminiMutex`) to prevent API rate-limiting. Google Gemini AI processes the raw text to extract structured fields: `Part Name`, `Qty`, `Size`, `Material`, `Machine`, and `Vendor`. The AI is instructed to strictly preserve the exact text typed by the worker.
+3. **Inventory Matching**: The backend cross-references the extracted part name with the NeonDB `inventory` table. If a match is found, it populates AI Suggestions (`suggestedMatch`, `sku`/P.No, `reg_no`/Reg.No, `availableStock`, `price`), but DOES NOT overwrite the user's raw text.
+4. **Database Insertion**: The parsed request is inserted into the `pending_requests` table in NeonDB with the initial status set to `pending_review`.
+5. **Live Update**: A Socket.io event (`dashboard_update`) is emitted, instantly refreshing the frontend UI without requiring a page reload.
 
-Step-by-Step Flow:
-------------------
-1. Connection & Session:
-   - The bot initializes the WhatsApp Client using 'whatsapp-web.js' with 'LocalAuth'
-     to persist the session.
-   - If a new login is required, it outputs a QR code in the terminal via 'qrcode-terminal'.
-   - Once connected, it logs "WhatsApp Connected".
+### 2. User Roles & Multi-Stage Approval Workflow
+The frontend dashboard provides role-based access control, steering demands through a specific pipeline:
+- **Observer**: Read-only access. Can view KPIs and historical data but cannot modify requests.
+- **Editor (Reviewer)**: Responsible for the first pass.
+  - Sees requests in the `pending_review` stage.
+  - Can inline-edit fields (Part Name, Qty, Size, Material, Machine, Vendor, P.No, Reg.No, Rate).
+  - Can reject requests or **Forward** them to the Manager (changes DB status to `reviewed`).
+- **Approver (Manager)**: Final authority.
+  - Sees requests that have been forwarded (`reviewed`).
+  - Can make final edits.
+  - Can **Approve** requests (changes DB status to `approved`, logging `approved_by` and `approved_at`).
+  - If an approved item does not exist in the master `inventory`, approving it automatically creates a new inventory record with 0 stock.
 
-2. Listening & Filtering:
-   - The bot listens to all incoming messages.
-   - It retrieves the chat object and filters messages to process ONLY those coming from the 
-     TARGET_GROUP ("120363427181556541@g.us"). All other messages are ignored.
+### 3. Fulfillment & Export
+- **Receiving**: Once items physically arrive at the factory, approved requests can be marked as "Received" (changes status to `received`). This closes the lifecycle and optionally increments inventory stock.
+- **Reporting**: The dashboard offers comprehensive Export capabilities (Excel & PDF) and a "Print Demand List" function. By default, these reports filter for demands that are **"Approved but not received"**.
 
-3. Message Processing:
-   - A. Text Messages (Plain message with no media):
-     - Logs the text message and forwards it to `processText(text)`.
-   - B. Voice Notes (Audio media):
-     - Downloads the audio file from WhatsApp.
-     - Saves the file locally with a temporary filename `voice_<timestamp>.ogg`.
-     - Converts the binary file into a base64 string and forwards it to `processAudio(filename)`.
+## Recent Technical Fixes & Enhancements
 
-4. AI Information Extraction (Gemini):
-   - The bot instantiates the Gemini API using the `gemini-2.5-flash` model.
-   - The text or audio prompt instructs Gemini to:
-     - Translate multilingual messages (e.g., Hindi, Punjabi, etc.) to English.
-     - Parse the input, which might request one or multiple items.
-     - For EACH item, extract the following 6 fields:
-       * Part Name
-       * Qty Required (extracted as a plain number e.g., "1", "20")
-       * Size (empty if not mentioned)
-       * Material (empty if not mentioned)
-       * For Machine (empty if not mentioned)
-       * Vendor (empty if not mentioned)
-     - Propagate variables: If "Vendor" or "For Machine" is mentioned once for multiple items,
-       the prompt instructs Gemini to apply it to ALL items in that message.
-     - Output ONLY a raw JSON array containing objects matching the schema.
+### Database Migration
+- Fully migrated away from Google Sheets. NeonDB is now the sole permanent ledger.
+- Added essential tracking columns to `pending_requests`: `status`, `rate`, `sku`, `reg_no`, `approved_by`, `approved_at`, `edited_by`, `edited_at`, `forwarded_at`.
 
-5. JSON Parsing & Resiliency:
-   - Cleans the raw response from Gemini (strips ```json markdown wrappers).
-   - Attempts to parse the response into a JSON array.
-   - If parsing fails, it falls back to a default JSON format placing the raw output in 
-     the "Part Name" field to avoid losing data.
+### Backend Enhancements
+- **Endpoints updated**: `/edit`, `/forward`, and `/approve` routes now properly capture and persist explicit edits to all fields, including `sku` and `reg_no`.
+- **Data Mapping Fix**: Fixed the `/api/pending` fetch route so it prioritizes explicitly edited `sku` and `reg_no` values from the database over raw inventory matches, ensuring the dashboard perfectly reflects human edits.
+- **AI Rate Limits**: Resolved 429 concurrency errors from the Gemini API by implementing a strict promise-based Mutex queue for batch message processing.
 
-6. Pending Queue Redirection:
-   - Forwards each extracted part item to the dashboard Express server pending queue (`POST /api/pending`).
-   - Maps Gemini's extracted keys to standard camelCase properties:
-     * `partName` (derived from "Part Name")
-     * `qty` (derived from "Qty Required")
-     * `size` (derived from "Size")
-     * `material` (derived from "Material")
-     * `machine` (derived from "For Machine")
-     * `vendor` (derived from "Vendor")
-   - This holds the items in an intermediate queue awaiting admin verification before writing to Google Sheets.
-
---------------------------------------------------------------------------------
-2. PROJECT FILE STRUCTURE
---------------------------------------------------------------------------------
-
-- `test.js`           : The main script containing the active bot code, helper functions
-                        (processText, processAudio, updateSheet), and commented legacy code.
-- `credentials.json`  : The Google Service Account secret key file containing JSON credentials 
-                        used by the Google APIs library to authenticate sheet writes.
-- `.env`              : Config file containing secret environment variables (e.g., GEMINI_API_KEY).
-- `context.txt`       : This documentation file.
-- `package.json`      : Manages Node.js project dependencies (googleapis, whatsapp-web.js,
-                        qrcode-terminal, @google/generative-ai, dotenv).
-- `voice_*.ogg`       : Temporary local audio files saved when voice notes are downloaded 
-                        before sending base64 data to Gemini.
-
---------------------------------------------------------------------------------
-3. KEY CONFIGURATION CONSTANTS
---------------------------------------------------------------------------------
-
-- WhatsApp Target Group Serialized ID:
-  `TARGET_GROUP = "120363427181556541@g.us"`
-
-- Google Sheets ID:
-  `spreadsheetId: "14QSTB1DJeaY44Ec2WTA12znOW6L5AsLALhLLEedwVpI"`
-
-- Google Sheet Target Tab and Range:
-  `range: "Sheet1!A:G"`
-
-- Gemini Model:
-  `model: "gemini-2.5-flash"`
-
---------------------------------------------------------------------------------
-4. PROMPT SCHEMAS & TEMPLATES
---------------------------------------------------------------------------------
-
-Text Extraction Prompt:
-```
-Translate to English.
-
-The message may contain ONE or MULTIPLE items/parts being requested.
-
-For EACH item extract:
-- Part Name
-- Qty Required
-- Size
-- Material
-- For Machine
-- Vendor
-
-Rules:
-- If Vendor is mentioned once for multiple items, apply it to ALL items
-- If "For Machine" is mentioned once for multiple items, apply it to ALL items
-- If Size or Material is not mentioned, leave it empty
-- Qty should be just the number (e.g. "1", "20", "12")
-
-Return ONLY a raw JSON array with NO markdown, NO code fences, NO explanation.
-Example format:
-[
-  {"Part Name":"","Qty Required":"","Size":"","Material":"","For Machine":"","Vendor":""},
-  {"Part Name":"","Qty Required":"","Size":"","Material":"","For Machine":"","Vendor":""}
-]
-
-Message:
-${text}
-```
-
-Audio Extraction Prompt:
-Passes the base64 audio data with `mimeType: "audio/ogg"` alongside the following instructions:
-```
-Translate to English.
-
-The message may contain ONE or MULTIPLE items/parts being requested.
-
-For EACH item extract:
-- Part Name
-- Qty Required
-- Size
-- Material
-- For Machine
-- Vendor
-
-Rules:
-- If Vendor is mentioned once for multiple items, apply it to ALL items
-- If "For Machine" is mentioned once for multiple items, apply it to ALL items
-- If Size or Material is not mentioned, leave it empty
-- Qty should be just the number (e.g. "1", "20", "12")
-
-Return ONLY a raw JSON array with NO markdown, NO code fences, NO explanation.
-Example format:
-[
-  {"Part Name":"","Qty Required":"","Size":"","Material":"","For Machine":"","Vendor":""},
-  {"Part Name":"","Qty Required":"","Size":"","Material":"","For Machine":"","Vendor":""}
-]
-```
-
---------------------------------------------------------------------------------
-5. TECHNICAL RECOMMENDATIONS & PLANNED IMPROVEMENTS
---------------------------------------------------------------------------------
-
-1. Temp File Clean-Up:
-   - When a voice note is received, `fs.writeFileSync(filename, ...)` is called.
-   - These `.ogg` files accumulate in the root workspace directory.
-   - Improvement: Use `fs.unlinkSync(filename)` in a `finally` block or after Gemini processing 
-     to clean up temporary files automatically (similar to `test2.js`).
-
-2. Robust JSON Extraction:
-   - Even though Gemini is instructed to return only a raw JSON array, models sometimes output 
-     markdown fences (e.g. ```json ... ```) or prefix text. 
-   - Improvement: Utilize Gemini's Structured Outputs feature (using `responseSchema` in the 
-     generation configuration) to guarantee 100% syntactically correct JSON array responses.
-
-3. Process Audio directly from Buffer:
-   - Instead of writing to disk, you can pass the base64 buffer directly from WhatsApp media.data
-     without saving a file, which improves I/O performance and eliminates local file management.
-================================================================================
-
---------------------------------------------------------------------------------
-6. WEB DASHBOARD INTEGRATION (REACT & EXPRESS)
---------------------------------------------------------------------------------
-
-A light, minimalist web dashboard inspired by high-end design languages (e.g., the SPARK layout) is integrated into the project for visualizing part requests in real-time.
-
-Architecture:
--------------
-- Backend: Built with Express.js (`server.js`) listening on Port 3001. It uses a Postgres database (Neon DB) to store unapproved requests received from the bot. It exposes:
-  * `GET /api/requests`: Reads approved rows directly from the Google Sheet.
-  * `GET /api/pending`: Reads the Neon DB pending queue (persisted in `pending_requests`).
-  * `POST /api/pending`: Adds a new parsed demand to the database.
-  * `POST /api/pending/:id/approve`: Saves/Appends approved details to the Google Sheet and updates status to `approved` in DB.
-  * `POST /api/pending/:id/reject`: Rejects the item in the database (status = `rejected`).
-  * `POST /api/pending/:id/edit`: Edits and updates the request in the database.
-  * `POST /api/pending/:id/forward`: Forwards the request from Editor to Manager (status = `reviewed`).
-  * Static routes: Serves static voice files from `/audio` and static React built files.
-- Frontend: Built with React, Vite, and Vanilla CSS, located in the `dashboard/` directory.
-
-Visual Theme & Layout:
-----------------------
-- White/Slate minimalist: High whitespace, crisp `#ffffff` sidebar, soft `#f8fafc` background.
-- Sidebar Tabs: Includes toggleable tabs for "Pending Demands" (active by default), "Receiving Queue", "Approved History", and "Inventory Catalog".
-- Dynamic Notification Badge: The pending sidebar button displays a red numerical indicator detailing the current size of the queue for the active role.
-- KPI Statistic Cards: The Approver Dashboard features a top-level KPI Summary Panel displaying real-time statistis fetched dynamically from Neon DB:
-  * *New Worker Demands* (`status = 'pending_review'`)
-  * *Pending Approval* (`status = 'reviewed'`)
-  * *Approved but Not Received* (`status = 'approved'`)
-
-Worker → Editor → Approver Workflow with Read-Only Manager Monitoring:
-----------------------------------------------------------------------
-- The dashboard enforces a strict role hierarchy and read-only monitoring views based on bcrypt-authenticated profiles (`users.json`):
-  * **Editor** (internal role: `reviewer`): Sees only incoming worker requests (`status = 'pending_review'`). Actions include Edit, Forward for Approval, and Reject.
-  * **Approver** (internal role: `manager`): Sees only requests reviewed and forwarded by the Editor (`status = 'reviewed'`). Actions include Edit, Approve, and Reject.
-  * **Manager** (internal role: `observer`): A third read-only monitoring role that is not part of the active approval workflow. The Manager gets full visibility into incoming demands, pending approvals, receiving queues, and the master inventory catalog.
-- **Strict Read-Only Restrictions for Manager**:
-  * Actions column header and action buttons are entirely hidden in List View.
-  * "Edit" button and bottom "Admin Verification Panel" (containing Forward/Reject/Approve/Receive controls) are completely hidden on the card detail view.
-  * All views and lists are fully read-only, preventing any state-modifying actions while preserving active metrics.
-- Display mode (Card View vs List View) does not affect actions or permissions; identical action blocks are accessible in both views for Editor/Approver roles.
-
-Procurement-Flexible Searchable Autocomplete:
----------------------------------------------
-- **9 Consistent Fields**: Both Card View and List View edit forms expose the exact same 9 fields: Part Name, SKU (P No.), Reg No., Quantity, Size specs, Material, Machine, Vendor, and Rate.
-- **Searchable Autocomplete Input**: Core procurement fields (Part Name, Vendor, Machine, Material) use standard `<input type="text">` fields bound to `<datalist>` autocomplete options fetched from the live inventory catalog.
-- **Procurement Flexibility**: Unlike strict select dropdowns, datalist-assisted inputs present useful catalog recommendations while allowing the Editor to freely type and save brand new custom procurement values (e.g. new parts or vendors) that don't already exist in the inventory.
-- **Dynamic Auto-Fill Relationship**: Selecting an item from the Part Name, SKU, or Reg No. lists automatically queries the preloaded master array and auto-fills all other fields in the form (Size, Material, Machine, Vendor, Rate, SKU) to prevent typing errors.
-================================================================================
-
---------------------------------------------------------------------------------
-7. INVENTORY CATALOG PRICING & RATE INTEGRATION
---------------------------------------------------------------------------------
-- **Inventory Rate Column**: A new `rate` (NUMERIC(10, 2) DEFAULT 0.00) column is added to the Neon DB `inventory` catalog table.
-- **Copying Specs upon Approval**: When a new demand request is approved by the Manager (creating a *new* inventory item), the system automatically copies the following fields from the approved request into the new inventory catalog record: Part Name, P No. (sku), Reg No., Vendor, Rate, Material, Size, and Machine.
-- **Preserve Catalog Pricing**: If the inventory item already exists in the catalog, approval does *not* automatically overwrite the catalog rate, preserving the master pricing.
-- **Separate Rate Fields**: The request rate (stores the negotiated price used for that specific approval) and the inventory rate (stores the catalog master list price) remain completely separate.
-- **Double Layout Support (Card & List Views)**: The rate is prominently displayed as currency in both:
-  * *Inventory List (Table) View*: Rendered as a distinct "Rate" column.
-  * *Inventory Card Grid View*: Rendered beautifully inside the inventory items' specification lists.
-================================================================================
+### Frontend UI/UX Improvements
+- **PDF & Printing**: Fixed a silent crash in `jspdf-autotable` by updating the import structure. The "Print List" button was rewritten to generate and auto-print the beautiful PDF format rather than printing a messy raw HTML webpage.
+- **Fluid Layout**: Removed rigid `max-height: 100vh` and inner scrollbars from the main workspace. The dashboard now natively expands, allowing smooth, full-page browser scrolling.
+- **Default Exports**: Removed the redundant "Approved but not received" checkbox; this logical filter is now strictly enforced as the default behavior for all exports and prints.
+- **Inline Editing**: Streamlined the table view inline-editing experience, ensuring robust visual feedback (spinners, disabled states) during network requests.

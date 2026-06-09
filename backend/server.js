@@ -716,7 +716,7 @@ app.get('/api/pending', async (req, res) => {
                 requestedBy: row.requested_by || 'WhatsApp User',
                 receivedAt: row.received_at || row.demand_timestamp,
                 sku: skuValue,
-                regNo: match ? (match.reg_no || '') : '',
+                regNo: row.reg_no || (match ? (match.reg_no || '') : ''),
                 category: row.category || (match ? match.category : ''),
                 price: priceVal,
                 availableStock: availableStock,
@@ -959,8 +959,8 @@ app.post('/api/pending/:id/edit', async (req, res) => {
         const queryText = `
             UPDATE pending_requests 
             SET part_name = $1, qty = $2, size = $3, material = $4, machine = $5, vendor = $6, rate = $7, 
-                edited_by = $8, edited_at = NOW()
-            WHERE id = $9
+                sku = $8, reg_no = $9, edited_by = $10, edited_at = NOW()
+            WHERE id = $11
             RETURNING *
         `;
 
@@ -972,6 +972,8 @@ app.post('/api/pending/:id/edit', async (req, res) => {
             editData.machine || '',
             editData.vendor || '',
             editData.price || editData.rate || '',
+            editData.sku || '',
+            editData.regNo || '',
             editorRoleName,
             id
         ];
@@ -1009,8 +1011,8 @@ app.post('/api/pending/:id/forward', async (req, res) => {
         const queryText = `
             UPDATE pending_requests 
             SET part_name = $1, qty = $2, size = $3, material = $4, machine = $5, vendor = $6, rate = $7,
-                status = 'reviewed', edited_by = 'Reviewer', edited_at = NOW(), forwarded_at = NOW()
-            WHERE id = $8
+                sku = $8, reg_no = $9, status = 'reviewed', edited_by = 'Reviewer', edited_at = NOW(), forwarded_at = NOW()
+            WHERE id = $10
             RETURNING *
         `;
 
@@ -1022,6 +1024,8 @@ app.post('/api/pending/:id/forward', async (req, res) => {
             editData.machine || '',
             editData.vendor || '',
             editData.price || editData.rate || '',
+            editData.sku || '',
+            editData.regNo || '',
             id
         ];
 
@@ -1054,8 +1058,8 @@ app.post('/api/pending/:id/approve', async (req, res) => {
         const queryText = `
             UPDATE pending_requests 
             SET part_name = $1, qty = $2, size = $3, material = $4, machine = $5, vendor = $6, rate = $7,
-                status = 'approved', approved_by = 'Manager', approved_at = NOW()
-            WHERE id = $8
+                sku = $8, reg_no = $9, status = 'approved', approved_by = 'Manager', approved_at = NOW()
+            WHERE id = $10
             RETURNING *
         `;
 
@@ -1067,6 +1071,8 @@ app.post('/api/pending/:id/approve', async (req, res) => {
             approvedData.machine || '',
             approvedData.vendor || '',
             approvedData.price || approvedData.rate || '',
+            approvedData.sku || '',
+            approvedData.regNo || '',
             id
         ];
 
