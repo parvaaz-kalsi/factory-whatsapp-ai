@@ -57,12 +57,12 @@ body {
 
 /* Left Sidebar Navigation */
 .sidebar {
-  width: 260px;
+  width: 240px;
   background-color: var(--bg-sidebar);
   border-right: 1px solid var(--border-light);
   display: flex;
   flex-direction: column;
-  padding: 2.5rem 1.5rem;
+  padding: 1.5rem 1.25rem;
   flex-shrink: 0;
 }
 
@@ -71,7 +71,7 @@ body {
   font-weight: 800;
   letter-spacing: 0.05em;
   color: var(--text-primary);
-  margin-bottom: 2.5rem;
+  margin-bottom: 1.5rem;
 }
 
 .sidebar-section-label {
@@ -95,7 +95,7 @@ body {
   display: flex;
   align-items: center;
   gap: 0.75rem;
-  padding: 0.65rem 0.85rem;
+  padding: 0.5rem 0.75rem;
   font-size: 0.9rem;
   font-weight: 500;
   color: var(--text-secondary);
@@ -104,6 +104,7 @@ body {
   cursor: pointer;
   transition: all var(--transition-fast);
   border-left: 3px solid transparent;
+  white-space: nowrap;
 }
 
 .sidebar-menu-item:hover {
@@ -142,26 +143,30 @@ body {
 /* Main Content Workspace */
 .main-workspace {
   flex-grow: 1;
-  padding: 2.5rem 3rem;
+  padding: 1.5rem 2rem;
   display: flex;
   flex-direction: column;
   min-height: 100vh;
   box-sizing: border-box;
+  overflow-x: hidden;
 }
 
 /* Top Header & Search */
 .header-section {
   display: flex;
-  justify-content: space-between;
+  justify-content: flex-start;
   align-items: center;
-  margin-bottom: 2.5rem;
+  margin-bottom: 1.5rem;
+  flex-wrap: nowrap;
+  gap: 2rem;
 }
 
 .header-title-wrapper h1 {
-  font-size: 1.85rem;
+  font-size: 1.6rem;
   font-weight: 700;
   color: var(--text-primary);
   letter-spacing: -0.02em;
+  white-space: nowrap;
 }
 
 .header-controls {
@@ -172,7 +177,7 @@ body {
 
 .search-input-wrapper {
   position: relative;
-  width: 320px;
+  width: 260px;
 }
 
 .search-input-wrapper input {
@@ -206,18 +211,19 @@ body {
 .btn-refresh {
   display: inline-flex;
   align-items: center;
-  gap: 0.5rem;
-  padding: 0.65rem 1.25rem;
+  gap: 0.45rem;
+  padding: 0.45rem 1rem;
   border: 1px solid var(--border-medium);
   border-radius: 9999px;
   background-color: #ffffff;
   font-family: var(--font-sans);
-  font-size: 0.875rem;
-  font-weight: 500;
+  font-size: 0.75rem;
+  font-weight: 600;
   color: var(--text-primary);
   cursor: pointer;
   transition: all var(--transition-fast);
   outline: none;
+  white-space: nowrap;
 }
 
 .btn-refresh:hover {
@@ -233,15 +239,15 @@ body {
 .metrics-row {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  gap: 1.5rem;
-  margin-bottom: 2.5rem;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
 }
 
 .metric-card {
   background-color: var(--bg-card);
   border: 1px solid var(--border-light);
   border-radius: 12px;
-  padding: 1.5rem;
+  padding: 1.25rem;
   display: flex;
   align-items: center;
   gap: 1.25rem;
@@ -298,12 +304,12 @@ body {
   background-color: var(--bg-card);
   border: 1px solid var(--border-light);
   border-radius: 12px;
-  padding: 1.25rem;
-  margin-bottom: 2rem;
+  padding: 1rem;
+  margin-bottom: 1.5rem;
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 1.5rem;
+  gap: 1rem;
   box-shadow: var(--shadow-sm);
 }
 
@@ -440,7 +446,7 @@ body {
 }
 
 .demand-card-body {
-  padding: 1.5rem;
+  padding: 1.25rem;
   display: flex;
   flex-direction: column;
   flex-grow: 1;

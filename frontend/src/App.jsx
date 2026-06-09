@@ -1117,30 +1117,26 @@ export default function App() {
               </button>
             )}
 
-            {/* User Profile Premium Badge */}
+            {/* User Profile Professional Badge */}
             {currentUser && (
               <div
                 style={{
                   display: 'flex',
                   alignItems: 'center',
-                  gap: '0.75rem',
-                  background: 'linear-gradient(135deg, #fffbeb 0%, #fef3c7 100%)',
-                  color: '#92400e',
-                  padding: '0.35rem 0.35rem 0.35rem 1.25rem',
+                  gap: '0.5rem',
+                  background: '#ffffff',
+                  color: 'var(--text-primary)',
+                  padding: '0.3rem 0.3rem 0.3rem 0.85rem',
                   borderRadius: '9999px',
                   fontWeight: 600,
-                  fontSize: '0.85rem',
-                  boxShadow: '0 4px 6px -1px rgba(245, 158, 11, 0.1), 0 2px 4px -2px rgba(245, 158, 11, 0.05)',
-                  border: '1px solid #fde68a',
-                  marginLeft: '0.5rem',
-                  transition: 'transform 0.2s ease, box-shadow 0.2s ease',
+                  fontSize: '0.75rem',
+                  border: '1px solid var(--border-medium)',
+                  fontFamily: 'var(--font-sans)',
                   cursor: 'default'
                 }}
-                onMouseOver={(e) => { e.currentTarget.style.transform = 'translateY(-1px)'; e.currentTarget.style.boxShadow = '0 6px 8px -1px rgba(245, 158, 11, 0.15), 0 3px 6px -2px rgba(245, 158, 11, 0.1)'; }}
-                onMouseOut={(e) => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = '0 4px 6px -1px rgba(245, 158, 11, 0.1), 0 2px 4px -2px rgba(245, 158, 11, 0.05)'; }}
               >
                 <div style={{ display: 'flex', alignItems: 'center' }}>
-                  <span style={{ color: '#92400e', textTransform: 'capitalize', fontWeight: 700, fontSize: '0.9rem', letterSpacing: '0.02em' }}>
+                  <span style={{ color: 'var(--text-primary)', textTransform: 'capitalize', fontWeight: 600, fontSize: '0.75rem' }}>
                     {currentUser.role}
                   </span>
                 </div>
@@ -1148,14 +1144,13 @@ export default function App() {
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  width: '32px',
-                  height: '32px',
-                  background: 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)',
-                  color: 'white',
+                  width: '24px',
+                  height: '24px',
+                  background: '#1e293b',
+                  color: '#ffffff',
                   borderRadius: '50%',
-                  boxShadow: 'inset 0 2px 4px rgba(255,255,255,0.2), 0 2px 4px rgba(217, 119, 6, 0.2)'
                 }}>
-                  <FiUser size={16} strokeWidth={2.5} />
+                  <FiUser size={13} strokeWidth={2.5} />
                 </div>
               </div>
             )}
