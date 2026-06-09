@@ -39,7 +39,7 @@ async function fetchInventoryContext() {
 }
 
 async function generateWithRetry(prompt, isAudio = false, audioBase64 = null) {
-    const models = ["gemini-2.5-flash-lite", "gemini-2.5-flash"];
+    const models = ["gemini-2.5-flash", "gemini-2.5-pro"];
     const maxRetries = 3;
     const delays = [2000, 4000, 6000];
 
@@ -143,22 +143,21 @@ The message may contain ONE or MULTIPLE items/parts being requested by factory w
 Cross-reference each request against the provided company's Master Inventory List below.
 
 INVENTORY MATCHING RULES:
-1. Match the requested part to the closest matching item in the Master Inventory.
-2. If an inventory match is found (even with spelling variations, informal names, abbreviations, or Hindi/Punjabi terms):
-   - Use the canonical "Part Name" from the inventory.
+1. You MUST extract the EXACT item name the worker requested into the "Part Name" field (translate to English if needed). Do NOT forcefully change their requested name to an inventory item.
+2. Cross-reference the requested item against the Master Inventory. If there is a very similar or exact matching item:
+   - Put the inventory item's exact name in the "suggestedMatch" field.
    - Populate "SKU" with the inventory's SKU.
    - Populate "Size", "Material", and "Vendor" with details from the matched inventory item if not explicitly overridden by the worker's message.
    - Populate "Available Stock", "Price", and "Category" from the matched inventory item.
    - If the requested quantity (Qty Required) exceeds the matched inventory item's stock (Stock), generate a detailed warning in the "stockWarning" field (e.g., "Requested 5, but only 2 available in stock").
 3. If no match is found:
-   - Perform standard extraction (leave SKU, Available Stock, Price, stockWarning empty).
-   - If there is a similar item in the inventory that might be what they wanted, suggest it in the "suggestedMatch" field (e.g., "Did you mean back gauge pc (SKU: 137)?").
+   - Perform standard extraction (leave SKU, Available Stock, Price, stockWarning, and suggestedMatch empty).
 
 MASTER INVENTORY:
 ${inventoryContext}
 
 For EACH item extract:
-- Part Name (canonical matched name or parsed name)
+- Part Name (The exact name the worker asked for, translated to English)
 - SKU (blank if not matched)
 - Qty Required (plain number only, e.g., "1", "20")
 - Size (use detail1/detail2 format from inventory if matched)
