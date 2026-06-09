@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { io } from 'socket.io-client';
-import { FiAlertTriangle, FiInfo, FiInbox, FiRefreshCw, FiUser, FiDownload, FiPrinter } from 'react-icons/fi';
+import { FiAlertTriangle, FiInfo, FiInbox, FiRefreshCw, FiUser, FiDownload, FiPrinter, FiClipboard, FiClock, FiCheckCircle, FiArchive, FiBox, FiMessageSquare, FiLogOut } from 'react-icons/fi';
+import { FaWhatsapp } from 'react-icons/fa';
 import * as XLSX from 'xlsx';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
@@ -700,9 +701,7 @@ export default function App() {
                 }}
                 style={{ width: '100%', textAlign: 'left', border: 'none', background: 'none' }}
               >
-                <svg className="sidebar-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
-                </svg>
+                <FiClipboard className="sidebar-icon" />
                 <span style={{ flexGrow: 1 }}>New Worker Demands</span>
                 {pendingRequests.filter(r => !r.status || r.status === 'pending_review').length > 0 && (
                   <span 
@@ -730,9 +729,7 @@ export default function App() {
                 }}
                 style={{ width: '100%', textAlign: 'left', border: 'none', background: 'none' }}
               >
-                <svg className="sidebar-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
+                <FiClock className="sidebar-icon" />
                 <span style={{ flexGrow: 1 }}>Pending Approval</span>
                 {pendingRequests.filter(r => r.status === 'reviewed').length > 0 && (
                   <span 
@@ -760,9 +757,7 @@ export default function App() {
                 }}
                 style={{ width: '100%', textAlign: 'left', border: 'none', background: 'none' }}
               >
-                <svg className="sidebar-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
-                </svg>
+                <FiCheckCircle className="sidebar-icon" />
                 <span style={{ flexGrow: 1 }}>Approved Queue</span>
                 {pendingRequests.filter(r => r.status === 'approved').length > 0 && (
                   <span 
@@ -790,9 +785,7 @@ export default function App() {
                 }}
                 style={{ width: '100%', textAlign: 'left', border: 'none', background: 'none' }}
               >
-                <svg className="sidebar-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
-                </svg>
+                <FiArchive className="sidebar-icon" />
                 Approved History
               </button>
 
@@ -805,9 +798,7 @@ export default function App() {
                 }}
                 style={{ width: '100%', textAlign: 'left', border: 'none', background: 'none' }}
               >
-                <svg className="sidebar-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
-                </svg>
+                <FiBox className="sidebar-icon" />
                 Inventory Catalog
               </button>
 
@@ -820,9 +811,7 @@ export default function App() {
                 }}
                 style={{ width: '100%', textAlign: 'left', border: 'none', background: 'none' }}
               >
-                <svg className="sidebar-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z" />
-                </svg>
+                <FaWhatsapp className="sidebar-icon" />
                 WhatsApp Integration
               </button>
             </>
@@ -837,9 +826,7 @@ export default function App() {
                 }}
                 style={{ width: '100%', textAlign: 'left', border: 'none', background: 'none' }}
               >
-                <svg className="sidebar-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
-                </svg>
+                <FiClipboard className="sidebar-icon" />
                 <span style={{ flexGrow: 1 }}>Pending Demands</span>
                 {pendingRequests.filter(r => currentUserRole === 'reviewer' ? (!r.status || r.status === 'pending_review') : r.status === 'reviewed').length > 0 && (
                   <span 
@@ -867,9 +854,7 @@ export default function App() {
                 }}
                 style={{ width: '100%', textAlign: 'left', border: 'none', background: 'none' }}
               >
-                <svg className="sidebar-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
-                </svg>
+                <FiInbox className="sidebar-icon" />
                 <span style={{ flexGrow: 1 }}>Receiving Queue</span>
                 {pendingRequests.filter(r => r.status === 'approved').length > 0 && (
                   <span 
@@ -897,9 +882,7 @@ export default function App() {
                 }}
                 style={{ width: '100%', textAlign: 'left', border: 'none', background: 'none' }}
               >
-                <svg className="sidebar-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
+                <FiArchive className="sidebar-icon" />
                 Approved History
               </button>
 
@@ -938,22 +921,7 @@ export default function App() {
           )}
         </nav>
 
-        {/* Audio Logs Sidebar Attachment */}
-        <div className="sidebar-section-label" style={{ marginTop: '1.5rem' }}>Audio Notes Log</div>
-        <div className="audio-library-wrapper">
-          {voiceNotes.length === 0 ? (
-            <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', paddingLeft: '0.5rem' }}>No voice files logged</div>
-          ) : (
-            voiceNotes.slice(0, 4).map((note) => (
-              <a key={note.filename} href={note.url} target="_blank" rel="noreferrer" className="audio-lib-item">
-                <svg className="audio-lib-play-icon" viewBox="0 0 24 24">
-                  <path d="M8 5v14l11-7z" />
-                </svg>
-                <span>Voice {new Date(note.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
-              </a>
-            ))
-          )}
-        </div>
+
 
         <div className="sidebar-footer" style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
           
@@ -988,9 +956,7 @@ export default function App() {
             className="sidebar-menu-item danger"
             style={{ width: '100%', textAlign: 'left', border: 'none', background: 'none' }}
           >
-            <svg className="sidebar-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
-            </svg>
+            <FiLogOut className="sidebar-icon" />
             Sign Out
           </button>
         </div>
@@ -1000,7 +966,7 @@ export default function App() {
       <main className="main-workspace">
         {/* Top Header Section */}
         <header className="header-section">
-          <div className="header-title-wrapper">
+          <div className="header-title-wrapper" style={{ display: 'flex', alignItems: 'center', gap: '2rem', flexWrap: 'wrap', flex: 1 }}>
             <h1>
               {activeTab === 'pending_review' 
                 ? 'New Worker Demands' 
@@ -1018,9 +984,6 @@ export default function App() {
                             ? 'WhatsApp Integration'
                             : 'Inventory Catalog'}
             </h1>
-          </div>
-          
-          <div className="header-controls">
 
             {/* Minimalist Search Bar */}
             {activeTab !== 'whatsapp_settings' && (
@@ -1036,6 +999,9 @@ export default function App() {
                 />
               </div>
             )}
+          </div>
+          
+          <div className="header-controls">
             
             {/* Layout Switcher (Card / List Toggle) */}
             {activeTab !== 'whatsapp_settings' && (
@@ -1117,45 +1083,40 @@ export default function App() {
               </button>
             )}
 
-            {/* User Profile Premium Badge */}
+            {/* User Profile Professional Badge */}
             {currentUser && (
               <div 
                 style={{
                   display: 'flex',
                   alignItems: 'center',
-                  gap: '0.75rem',
-                  background: 'linear-gradient(135deg, #fffbeb 0%, #fef3c7 100%)',
-                  color: '#92400e',
-                  padding: '0.35rem 0.35rem 0.35rem 1.25rem',
+                  gap: '0.5rem',
+                  background: '#ffffff',
+                  color: 'var(--text-primary)',
+                  padding: '0.3rem 0.3rem 0.3rem 0.85rem',
                   borderRadius: '9999px',
                   fontWeight: 600,
-                  fontSize: '0.85rem',
-                  boxShadow: '0 4px 6px -1px rgba(245, 158, 11, 0.1), 0 2px 4px -2px rgba(245, 158, 11, 0.05)',
-                  border: '1px solid #fde68a',
-                  marginLeft: '0.5rem',
-                  transition: 'transform 0.2s ease, box-shadow 0.2s ease',
+                  fontSize: '0.75rem',
+                  border: '1px solid var(--border-medium)',
+                  fontFamily: 'var(--font-sans)',
                   cursor: 'default'
                 }}
-                onMouseOver={(e) => { e.currentTarget.style.transform = 'translateY(-1px)'; e.currentTarget.style.boxShadow = '0 6px 8px -1px rgba(245, 158, 11, 0.15), 0 3px 6px -2px rgba(245, 158, 11, 0.1)'; }}
-                onMouseOut={(e) => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = '0 4px 6px -1px rgba(245, 158, 11, 0.1), 0 2px 4px -2px rgba(245, 158, 11, 0.05)'; }}
               >
                 <div style={{ display: 'flex', alignItems: 'center' }}>
-                  <span style={{ color: '#92400e', textTransform: 'capitalize', fontWeight: 700, fontSize: '0.9rem', letterSpacing: '0.02em' }}>
+                  <span style={{ color: 'var(--text-primary)', textTransform: 'capitalize', fontWeight: 600, fontSize: '0.75rem' }}>
                     {currentUser.role}
                   </span>
                 </div>
-                <div style={{ 
-                  display: 'flex', 
-                  alignItems: 'center', 
-                  justifyContent: 'center', 
-                  width: '32px', 
-                  height: '32px', 
-                  background: 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)', 
-                  color: 'white', 
+                <div style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  width: '24px',
+                  height: '24px',
+                  background: '#1e293b',
+                  color: '#ffffff',
                   borderRadius: '50%',
-                  boxShadow: 'inset 0 2px 4px rgba(255,255,255,0.2), 0 2px 4px rgba(217, 119, 6, 0.2)'
                 }}>
-                  <FiUser size={16} strokeWidth={2.5} />
+                  <FiUser size={13} strokeWidth={2.5} />
                 </div>
               </div>
             )}
