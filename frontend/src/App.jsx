@@ -5,7 +5,7 @@ import { FaWhatsapp } from 'react-icons/fa';
 import * as XLSX from 'xlsx';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
-import Metrics from './components/Metrics';
+
 import ApproverMetrics from './components/ApproverMetrics';
 import Filters from './components/Filters';
 import RequestCard from './components/RequestCard';
@@ -374,8 +374,11 @@ export default function App() {
 
   // Handle Forward Action (Reviewer)
   const handleForward = async (id, forwardData) => {
-    if (!forwardData.qty || !forwardData.price || String(forwardData.qty).trim() === '' || String(forwardData.price).trim() === '') {
-      alert('Quantity and Rate (Est. Price) are mandatory. Please edit the demand and fill these fields before forwarding.');
+    const qtyVal = parseFloat(String(forwardData.qty || '').replace(/[^0-9.]/g, ''));
+    const priceVal = parseFloat(String(forwardData.price || '').replace(/[^0-9.]/g, ''));
+
+    if (isNaN(qtyVal) || qtyVal <= 0 || isNaN(priceVal) || priceVal <= 0) {
+      alert('Quantity and Rate (Est. Price) must be greater than zero. Please edit the demand and fill these fields before forwarding.');
       return;
     }
     
@@ -1828,19 +1831,11 @@ export default function App() {
         ) : (
           <>
             {/* KPI Summary Panels */}
-            {currentUserRole === 'manager' || currentUserRole === 'reviewer' ? (
-              <ApproverMetrics
-                newWorkerDemands={kpiData.newWorkerDemands}
-                pendingApproval={kpiData.pendingApproval}
-                approvedNotReceived={kpiData.approvedNotReceived}
-              />
-            ) : (
-              <Metrics
-                totalDemands={totalDemandsCount}
-                activeMachinesCount={activeMachinesCount}
-                activeVendorsCount={activeVendorsCount}
-              />
-            )}
+            <ApproverMetrics
+              newWorkerDemands={kpiData.newWorkerDemands}
+              pendingApproval={kpiData.pendingApproval}
+              approvedNotReceived={kpiData.approvedNotReceived}
+            />
 
             {/* Quick Filters */}
             <Filters

@@ -66,7 +66,7 @@ export default function PendingCard({ item, voiceNotes = [], currentUserRole, on
     material: item.material || '',
     machine: item.machine || '',
     vendor: item.vendor || '',
-    price: item.price || item.rate || ''
+    price: String(item.price || item.rate || '').replace(/[\$Rs\s]/g, '')
   });
 
   // Add to Inventory Modal State
@@ -168,7 +168,7 @@ export default function PendingCard({ item, voiceNotes = [], currentUserRole, on
         material: matched.material !== '—' ? (matched.material || prev.material) : prev.material,
         machine: matched.machine !== 'General Compatibility' ? (matched.machine || prev.machine) : prev.machine,
         vendor: matched.vendor !== '—' ? (matched.vendor || prev.vendor) : prev.vendor,
-        price: matched.price || prev.price
+        price: String(matched.price || prev.price).replace(/[\$Rs\.\s]/g, match => match === '.' ? '.' : '')
       }));
     } else {
       setFormData(prev => ({ ...prev, partName: val }));
@@ -189,7 +189,7 @@ export default function PendingCard({ item, voiceNotes = [], currentUserRole, on
         material: matched.material !== '—' ? (matched.material || prev.material) : prev.material,
         machine: matched.machine !== 'General Compatibility' ? (matched.machine || prev.machine) : prev.machine,
         vendor: matched.vendor !== '—' ? (matched.vendor || prev.vendor) : prev.vendor,
-        price: matched.price || prev.price
+        price: String(matched.price || prev.price).replace(/[\$Rs\.\s]/g, match => match === '.' ? '.' : '')
       }));
     } else {
       setFormData(prev => ({ ...prev, sku: val }));
@@ -210,7 +210,7 @@ export default function PendingCard({ item, voiceNotes = [], currentUserRole, on
         material: matched.material !== '—' ? (matched.material || prev.material) : prev.material,
         machine: matched.machine !== 'General Compatibility' ? (matched.machine || prev.machine) : prev.machine,
         vendor: matched.vendor !== '—' ? (matched.vendor || prev.vendor) : prev.vendor,
-        price: matched.price || prev.price
+        price: String(matched.price || prev.price).replace(/[\$Rs\.\s]/g, match => match === '.' ? '.' : '')
       }));
     } else {
       setFormData(prev => ({ ...prev, regNo: val }));
@@ -250,7 +250,7 @@ export default function PendingCard({ item, voiceNotes = [], currentUserRole, on
       material: item.material || '',
       machine: item.machine || '',
       vendor: item.vendor || '',
-      price: item.price || item.rate || ''
+      price: String(item.price || item.rate || '').replace(/[\$Rs\s]/g, '')
     });
     setIsEditing(false);
   };

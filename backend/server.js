@@ -66,7 +66,7 @@ function startAuthTimeout() {
             whatsappStatus.status = 'disconnected';
             whatsappStatus.lastStateChange = Date.now();
             if (whatsappClient) {
-                try { whatsappClient.end(new Error('Auth Timeout')); } catch (e) {}
+                try { whatsappClient.end(new Error('Auth Timeout')); } catch (e) { }
             }
         }
     }, AUTH_TIMEOUT_MS);
@@ -81,12 +81,12 @@ async function safeInitialize() {
     }
     lastReconnectTime = Date.now();
     whatsappStatus.initAttempt++;
-    
+
     console.log(`[WhatsApp] Initializing Baileys client (attempt #${whatsappStatus.initAttempt})...`);
     try {
         const { state, saveCreds } = await useMultiFileAuthState('./.auth_info_baileys');
         const { version, isLatest } = await fetchLatestBaileysVersion();
-        
+
         whatsappClient = makeWASocket({
             version,
             logger: pino({ level: 'silent' }),
@@ -96,10 +96,10 @@ async function safeInitialize() {
             generateHighQualityLinkPreview: true,
             syncFullHistory: false
         });
-        
+
         currentSaveCreds = saveCreds;
         whatsappClient.ev.on('creds.update', saveCreds);
-        
+
         setupBaileysEvents(whatsappClient);
     } catch (err) {
         console.error('[WhatsApp] Initialize failed:', err.message);
@@ -121,7 +121,7 @@ global.io = io; // Expose globally to broadcast from anywhere
 
 io.on('connection', (socket) => {
     console.log('[Socket.IO] New dashboard client connected:', socket.id);
-    
+
     // Immediately send current API limits on new connection
     const currentCount = geminiRequestTimestamps.length;
     socket.emit('api_limit_update', { count: currentCount, limit: GEMINI_RPM_LIMIT });
@@ -134,7 +134,7 @@ setInterval(() => {
     const now = Date.now();
     geminiRequestTimestamps = geminiRequestTimestamps.filter(t => now - t < 60000);
     const currentCount = geminiRequestTimestamps.length;
-    
+
     // Only broadcast if the count changed (e.g. decayed)
     if (currentCount !== lastBroadcastLimit && global.io) {
         global.io.emit('api_limit_update', { count: currentCount, limit: GEMINI_RPM_LIMIT });
@@ -147,7 +147,7 @@ const compression = require('compression');
 const morgan = require('morgan');
 
 app.use(helmet({
-  contentSecurityPolicy: false // Disabled for simplicity if loading external scripts/images
+    contentSecurityPolicy: false // Disabled for simplicity if loading external scripts/images
 }));
 app.use(compression());
 app.use(morgan('combined'));
@@ -221,7 +221,7 @@ async function savePendingRequest(item, senderName = 'WhatsApp User') {
 async function fetchInventoryContext() {
     try {
         const res = await pool.query('SELECT part_name, sku, material, detail1, detail2, available_qty, unit, price, vendor FROM inventory ORDER BY part_name ASC');
-        
+
         let context = "Master Inventory (Part Name | SKU | Material | Size Details | Stock Qty | Unit | Price | Preferred Vendor):\n";
         res.rows.forEach(row => {
             const size = [row.detail1, row.detail2].filter(Boolean).join(" / ");
@@ -241,70 +241,70 @@ async function generateWithRetry(prompt, isAudio = false, audioBase64 = null) {
     const mutexWait = new Promise(resolve => releaseMutex = resolve);
     const oldMutex = geminiMutex;
     geminiMutex = mutexWait;
-    
+
     await oldMutex;
 
     try {
-    const models = ["gemini-2.5-flash-lite", "gemini-2.5-flash"];
-    const maxRetries = 3;
-    const delays = [2000, 4000, 6000];
+        const models = ["gemini-2.5-flash", "gemini-2.5-flash-lite"];
+        const maxRetries = 3;
+        const delays = [2000, 4000, 6000];
 
-    for (const modelName of models) {
-        console.log(`Attempting Gemini request using model: ${modelName}`);
-        const model = genAI.getGenerativeModel({ model: modelName });
+        for (const modelName of models) {
+            console.log(`Attempting Gemini request using model: ${modelName}`);
+            const model = genAI.getGenerativeModel({ model: modelName });
 
-        for (let attempt = 0; attempt <= maxRetries; attempt++) {
-            try {
-                // Track this request for RPM limiting
-                geminiRequestTimestamps.push(Date.now());
-                if (global.io) {
-                    lastBroadcastLimit = geminiRequestTimestamps.length;
-                    global.io.emit('api_limit_update', { count: lastBroadcastLimit, limit: GEMINI_RPM_LIMIT });
-                }
+            for (let attempt = 0; attempt <= maxRetries; attempt++) {
+                try {
+                    // Track this request for RPM limiting
+                    geminiRequestTimestamps.push(Date.now());
+                    if (global.io) {
+                        lastBroadcastLimit = geminiRequestTimestamps.length;
+                        global.io.emit('api_limit_update', { count: lastBroadcastLimit, limit: GEMINI_RPM_LIMIT });
+                    }
 
-                let result;
-                if (isAudio) {
-                    result = await model.generateContent([
-                        prompt,
-                        {
-                            inlineData: {
-                                mimeType: "audio/ogg",
-                                data: audioBase64
+                    let result;
+                    if (isAudio) {
+                        result = await model.generateContent([
+                            prompt,
+                            {
+                                inlineData: {
+                                    mimeType: "audio/ogg",
+                                    data: audioBase64
+                                }
                             }
-                        }
-                    ]);
-                } else {
-                    result = await model.generateContent(prompt);
-                }
+                        ]);
+                    } else {
+                        result = await model.generateContent(prompt);
+                    }
 
-                const text = result.response.text();
-                if (text) {
-                    return text; // Success!
-                }
-            } catch (err) {
-                const errMessage = err.message || '';
-                const isTemporaryError = errMessage.includes('503') || 
-                                         errMessage.includes('high demand') || 
-                                         errMessage.includes('overload') || 
-                                         errMessage.includes('Unavailable') ||
-                                         errMessage.includes('fetch') ||
-                                         errMessage.includes('429') ||
-                                         errMessage.includes('Too Many Requests') ||
-                                         errMessage.includes('exhausted') ||
-                                         errMessage.includes('quota');
+                    const text = result.response.text();
+                    if (text) {
+                        return text; // Success!
+                    }
+                } catch (err) {
+                    const errMessage = err.message || '';
+                    const isTemporaryError = errMessage.includes('503') ||
+                        errMessage.includes('high demand') ||
+                        errMessage.includes('overload') ||
+                        errMessage.includes('Unavailable') ||
+                        errMessage.includes('fetch') ||
+                        errMessage.includes('429') ||
+                        errMessage.includes('Too Many Requests') ||
+                        errMessage.includes('exhausted') ||
+                        errMessage.includes('quota');
 
-                if (attempt < maxRetries && isTemporaryError) {
-                    const delay = delays[attempt];
-                    console.log(`Gemini retry attempt ${attempt + 1} for ${modelName} after ${delay}ms... (Error: ${errMessage})`);
-                    await new Promise(resolve => setTimeout(resolve, delay));
-                } else {
-                    console.log(`Request failed for model ${modelName} on attempt ${attempt + 1}. Error: ${errMessage}`);
-                    break; // Fallback to next model or exit loop
+                    if (attempt < maxRetries && isTemporaryError) {
+                        const delay = delays[attempt];
+                        console.log(`Gemini retry attempt ${attempt + 1} for ${modelName} after ${delay}ms... (Error: ${errMessage})`);
+                        await new Promise(resolve => setTimeout(resolve, delay));
+                    } else {
+                        console.log(`Request failed for model ${modelName} on attempt ${attempt + 1}. Error: ${errMessage}`);
+                        break; // Fallback to next model or exit loop
+                    }
                 }
             }
         }
-    }
-    return null; // All retries and models failed
+        return null; // All retries and models failed
     } finally {
         // Always release the lock for the next queued request
         releaseMutex();
@@ -313,10 +313,10 @@ async function generateWithRetry(prompt, isAudio = false, audioBase64 = null) {
 
 function extractJsonFromResponse(raw) {
     if (!raw) return null;
-    
+
     const startIdx = raw.indexOf('[');
     const endIdx = raw.lastIndexOf(']');
-    
+
     if (startIdx !== -1 && endIdx !== -1 && endIdx > startIdx) {
         try {
             const parsed = JSON.parse(raw.substring(startIdx, endIdx + 1));
@@ -325,7 +325,7 @@ function extractJsonFromResponse(raw) {
             console.error("Failed to parse extracted JSON array:", e.message);
         }
     }
-    
+
     const startObjIdx = raw.indexOf('{');
     const endObjIdx = raw.lastIndexOf('}');
     if (startObjIdx !== -1 && endObjIdx !== -1 && endObjIdx > startObjIdx) {
@@ -336,18 +336,31 @@ function extractJsonFromResponse(raw) {
             console.error("Failed to parse extracted JSON object:", e.message);
         }
     }
-    
+
     return null;
 }
 
 async function processText(text) {
     const inventoryContext = await fetchInventoryContext();
 
-const prompt = `
+    const prompt = `
 CRITICAL INSTRUCTION: First, determine if the message contains a clear, deliberate request for a factory machine part, tool, or material. 
 If the message is empty, unintelligible, gibberish, or just random chatter, you MUST IMMEDIATELY return an empty JSON array: []
 
 Only if there is a valid request, proceed with the following:
+
+List of items that are considered a factory item are:
+- machine parts
+- tools
+- consumables
+- lubricants
+- oils
+- coolants
+- chemicals
+- maintenance supplies
+- electrical items
+- raw materials
+
 Translate to English.
 
 The message may contain ONE or MULTIPLE items/parts being requested by factory workers.
@@ -358,11 +371,10 @@ EXTRACTION RULES:
 2. After extracting the raw request, check if there is a matching item in the Master Inventory.
 3. If an inventory match is found (even with spelling variations, informal names, abbreviations, or Hindi/Punjabi terms):
    - Put the canonical inventory name, SKU, and details into the "suggestedMatch" field. (e.g., "Matches inventory: Level Bolt (SKU: 83), Vendor: SMT").
-   - Populate "SKU" with the matched SKU so the system can link it.
-   - Populate "Available Stock", "Price", and "Category" from the matched inventory item.
+   - NEVER populate SKU, Available Stock, Price, or Category. ALWAYS leave them completely blank.
    - If the requested quantity (Qty Required) exceeds the matched inventory item's stock (Stock), generate a detailed warning in the "stockWarning" field (e.g., "Requested 5, but only 2 available in stock").
 4. If NO inventory match is found:
-   - Leave SKU, Available Stock, Price, stockWarning empty.
+   - Leave SKU, Available Stock, Price, Category, and stockWarning empty.
    - If there is a similar item in the inventory that might be what they wanted, suggest it in the "suggestedMatch" field (e.g., "Did you mean back gauge pc (SKU: 137)?").
 
 MASTER INVENTORY:
@@ -370,15 +382,15 @@ ${inventoryContext}
 
 For EACH item extract:
 - Part Name (EXACTLY as requested, do not use inventory name)
-- SKU (blank if not matched)
+- SKU (ALWAYS blank)
 - Qty Required (plain number only, e.g., "1", "20")
 - Size (EXACTLY as requested)
 - Material (EXACTLY as requested)
-- Category (blank if not matched)
+- Category (ALWAYS blank)
 - For Machine (EXACTLY as requested)
 - Vendor (EXACTLY as requested)
-- Price (blank if not matched)
-- Available Stock (blank if not matched)
+- Price (ALWAYS blank)
+- Available Stock (ALWAYS blank)
 - stockWarning (blank if no stock issue)
 - suggestedMatch (blank if no suggestion, otherwise describe the matched inventory item)
 
@@ -386,7 +398,7 @@ Rules:
 - If Vendor is mentioned once for multiple items, apply it to ALL items
 - If "For Machine" is mentioned once for multiple items, apply it to ALL items
 - If Size or Material is not mentioned, leave it empty
-- Qty should be just the number (e.g. "1", "20", "12")
+- Qty should be the number (e.g. "1", "20", "12") and any unit if provided (e.g. "pcs", "rolls", "kg" etc.)
 - CRITICAL: If the message is empty, gibberish, or does NOT explicitly request a factory machine part, tool, or material, you MUST return an empty JSON array: []
 
 Return ONLY a raw JSON array with NO markdown, NO code fences, NO explanation.
@@ -426,27 +438,27 @@ ${text}
     }
 
     console.log("PARSE FAILED. Raw:", raw);
-        return [{
-            "Part Name": raw,
-            "SKU": "",
-            "Qty Required": "",
-            "Size": "",
-            "Material": "",
-            "Category": "",
-            "For Machine": "",
-            "Vendor": "",
-            "Price": "",
-            "Available Stock": "",
-            "stockWarning": "",
-            "suggestedMatch": ""
-        }];
+    return [{
+        "Part Name": raw,
+        "SKU": "",
+        "Qty Required": "",
+        "Size": "",
+        "Material": "",
+        "Category": "",
+        "For Machine": "",
+        "Vendor": "",
+        "Price": "",
+        "Available Stock": "",
+        "stockWarning": "",
+        "suggestedMatch": ""
+    }];
 }
 
 async function processAudio(filename) {
     const inventoryContext = await fetchInventoryContext();
     const audioBase64 = fs.readFileSync(filename).toString('base64');
 
-const prompt = `
+    const prompt = `
 CRITICAL INSTRUCTION: First, determine if the audio contains a clear, deliberate human voice requesting a factory machine part, tool, or material. 
 If the audio is empty, contains only background noise, silence, or just random chatter, you MUST IMMEDIATELY return an empty JSON array: []
 
@@ -456,16 +468,29 @@ Translate to English.
 The message may contain ONE or MULTIPLE items/parts being requested by factory workers.
 Cross-reference each request against the provided company's Master Inventory List below.
 
+CRITICAL:
+Never replace the extracted Part Name with an inventory item.
+
+The Part Name must always be exactly what the worker requested.
+
+Inventory matching is only used to populate:
+- SKU
+- Available Stock
+- Price
+- suggestedMatch
+
+If no confident inventory match exists,
+keep the original Part Name unchanged and leave SKU blank.
+
 EXTRACTION RULES:
 1. Extract "Part Name", "Size", "Material", "For Machine", and "Vendor" EXACTLY as requested in the raw text. Do NOT override or rewrite them with inventory details. For example, if they ask for "Level Gauge 3 inch from Parveen Hyd", Part Name = "Level Gauge", Size = "3 inch", Vendor = "Parveen Hyd".
 2. After extracting the raw request, check if there is a matching item in the Master Inventory.
 3. If an inventory match is found (even with spelling variations, informal names, abbreviations, or Hindi/Punjabi terms):
    - Put the canonical inventory name, SKU, and details into the "suggestedMatch" field. (e.g., "Matches inventory: Level Bolt (SKU: 83), Vendor: SMT").
-   - Populate "SKU" with the matched SKU so the system can link it.
-   - Populate "Available Stock", "Price", and "Category" from the matched inventory item.
+   - NEVER populate SKU, Available Stock, Price, or Category. ALWAYS leave them completely blank.
    - If the requested quantity (Qty Required) exceeds the matched inventory item's stock (Stock), generate a detailed warning in the "stockWarning" field (e.g., "Requested 5, but only 2 available in stock").
 4. If NO inventory match is found:
-   - Leave SKU, Available Stock, Price, stockWarning empty.
+   - Leave SKU, Available Stock, Price, Category, and stockWarning empty.
    - If there is a similar item in the inventory that might be what they wanted, suggest it in the "suggestedMatch" field (e.g., "Did you mean back gauge pc (SKU: 137)?").
 
 MASTER INVENTORY:
@@ -473,15 +498,15 @@ ${inventoryContext}
 
 For EACH item extract:
 - Part Name (EXACTLY as requested, do not use inventory name)
-- SKU (blank if not matched)
+- SKU (ALWAYS blank)
 - Qty Required (plain number only, e.g., "1", "20")
 - Size (EXACTLY as requested)
 - Material (EXACTLY as requested)
-- Category (blank if not matched)
+- Category (ALWAYS blank)
 - For Machine (EXACTLY as requested)
 - Vendor (EXACTLY as requested)
-- Price (blank if not matched)
-- Available Stock (blank if not matched)
+- Price (ALWAYS blank)
+- Available Stock (ALWAYS blank)
 - stockWarning (blank if no stock issue)
 - suggestedMatch (blank if no suggestion, otherwise describe the matched inventory item)
 
@@ -526,20 +551,20 @@ Example format:
     }
 
     console.log("PARSE FAILED. Raw:", raw);
-        return [{
-            "Part Name": raw,
-            "SKU": "",
-            "Qty Required": "",
-            "Size": "",
-            "Material": "",
-            "Category": "",
-            "For Machine": "",
-            "Vendor": "",
-            "Price": "",
-            "Available Stock": "",
-            "stockWarning": "",
-            "suggestedMatch": ""
-        }];
+    return [{
+        "Part Name": raw,
+        "SKU": "",
+        "Qty Required": "",
+        "Size": "",
+        "Material": "",
+        "Category": "",
+        "For Machine": "",
+        "Vendor": "",
+        "Price": "",
+        "Available Stock": "",
+        "stockWarning": "",
+        "suggestedMatch": ""
+    }];
 }
 
 
@@ -658,7 +683,7 @@ async function findInventoryMatch(partName, sku) {
             // 1. Exact match
             const resExact = await pool.query('SELECT * FROM inventory WHERE part_name ILIKE $1', [trimmed]);
             if (resExact.rows.length > 0) return resExact.rows[0];
-            
+
             // 2. Partial/fuzzy match
             const resFuzzy1 = await pool.query('SELECT * FROM inventory WHERE part_name ILIKE $1 OR product_description ILIKE $1 LIMIT 1', [`%${trimmed}%`]);
             if (resFuzzy1.rows.length > 0) return resFuzzy1.rows[0];
@@ -681,11 +706,11 @@ async function findInventoryMatch(partName, sku) {
 app.get('/api/pending', async (req, res) => {
     try {
         const result = await pool.query("SELECT * FROM pending_requests WHERE status IS NULL OR status IN ('pending_review', 'reviewed', 'approved') ORDER BY demand_timestamp DESC");
-        
+
         // Map database columns to camelCase properties and resolve dynamic live stock matching
         const requests = await Promise.all(result.rows.map(async (row) => {
             const match = await findInventoryMatch(row.part_name, row.sku);
-            
+
             let availableStock = '0';
             let skuValue = row.sku || '';
             let suggestedMatch = 'No Match';
@@ -694,9 +719,7 @@ app.get('/api/pending', async (req, res) => {
 
             if (match) {
                 availableStock = (match.available_qty !== undefined ? match.available_qty : 0).toString();
-                skuValue = match.sku || skuValue;
                 suggestedMatch = match.part_name || '';
-                priceVal = priceVal || match.price || '';
 
                 // Extract quantity as numeric for comparison
                 const reqQty = parseInt((row.qty || '').replace(/[^0-9]/g, ''), 10);
@@ -722,8 +745,8 @@ app.get('/api/pending', async (req, res) => {
                 requestedBy: row.requested_by || 'WhatsApp User',
                 receivedAt: row.received_at || row.demand_timestamp,
                 sku: skuValue,
-                regNo: row.reg_no || (match ? (match.reg_no || '') : ''),
-                category: row.category || (match ? match.category : ''),
+                regNo: row.reg_no || '',
+                category: row.category || '',
                 price: priceVal,
                 availableStock: availableStock,
                 stockWarning: stockWarning,
@@ -735,7 +758,7 @@ app.get('/api/pending', async (req, res) => {
                 approvedBy: row.approved_by || ''
             };
         }));
-        
+
         res.json(requests);
     } catch (err) {
         console.error('Error fetching pending requests from DB:', err);
@@ -857,9 +880,9 @@ app.post('/api/pending/:id/approve', async (req, res) => {
         if (itemCheck.rows.length === 0) {
             const cleanName = partNameToCheck.trim().substring(0, 5).toUpperCase().replace(/[^A-Z0-9]/g, '');
             const generatedSku = 'GEN-' + cleanName + '-' + Math.floor(Math.random() * 10000);
-            
+
             console.log(`[Inventory Creation] Creating new inventory catalog entry for "${partNameToCheck}" with SKU "${approvedData.sku || generatedSku}", Reg No: "${approvedData.regNo || ''}", stock quantity = 0, rate = ${approvedData.price || approvedData.rate || '0.00'}`);
-            
+
             await pool.query(`
                 INSERT INTO inventory (
                     part_name, part_group, material, detail1, detail2, sku, reg_no, vendor, available_qty, price, rate, category
@@ -917,7 +940,7 @@ app.post('/api/pending/:id/receive', async (req, res) => {
         // Increase inventory stock quantity
         const partNameToCheck = dbRow.part_name || '';
         const itemCheck = await pool.query('SELECT * FROM inventory WHERE part_name ILIKE $1', [partNameToCheck.trim()]);
-        
+
         const receivedQtyNum = parseInt((dbRow.qty || '').replace(/[^0-9]/g, ''), 10) || 0;
         if (itemCheck.rows.length > 0) {
             const currentQty = itemCheck.rows[0].available_qty || 0;
@@ -1045,7 +1068,7 @@ app.post('/api/pending/custom', async (req, res) => {
         console.log('-----------------------------------');
 
         const result = await pool.query(queryText, values);
-        
+
         if (global.io) global.io.emit('dashboard_update');
         res.json({ success: true, item: result.rows[0] });
     } catch (err) {
@@ -1156,7 +1179,7 @@ app.post('/api/pending/:id/approve', async (req, res) => {
 app.post('/api/pending/:id/reject', async (req, res) => {
     try {
         const { id } = req.params;
-        
+
         const result = await pool.query("UPDATE pending_requests SET status = 'rejected' WHERE id = $1 RETURNING part_name", [id]);
         if (result.rows.length === 0) {
             return res.status(404).json({ error: 'Pending request not found' });
@@ -1390,12 +1413,12 @@ app.get('/api/whatsapp/groups', async (req, res) => {
                 if (!global.whatsappChatsCache) {
                     global.whatsappChatsCache = { data: [], lastFetch: 0, fetching: false };
                 }
-                
+
                 const now = Date.now();
                 if (now - global.whatsappChatsCache.lastFetch > 30000 && !global.whatsappChatsCache.fetching) {
                     global.whatsappChatsCache.fetching = true;
                     console.log('[WhatsApp Groups] Fetching live chats from WhatsApp client (uncached)...');
-                    
+
                     // Fire and forget or await with timeout
                     whatsappClient.groupFetchAllParticipating().then(groupsDict => {
                         const groups = Object.values(groupsDict);
@@ -1413,10 +1436,10 @@ app.get('/api/whatsapp/groups', async (req, res) => {
                         global.whatsappChatsCache.fetching = false;
                     });
                 }
-                
+
                 // Use cached group chats
                 const groupChats = global.whatsappChatsCache.data || [];
-                
+
                 groupChats.forEach(chat => {
                     const dbEntry = dbMap.get(chat.id._serialized);
                     combinedGroups.push({
@@ -1483,7 +1506,7 @@ app.post('/api/whatsapp/logout', async (req, res) => {
     try {
         console.log('[WhatsApp Admin] Logging out WhatsApp client manually...');
         clearAuthTimeout();
-        
+
         whatsappStatus.status = 'disconnected';
         whatsappStatus.qr = null;
         whatsappStatus.qrDataUrl = null;
@@ -1501,7 +1524,7 @@ app.post('/api/whatsapp/logout', async (req, res) => {
         // Delete auth session so a fresh QR is generated
         const authPath = path.join(__dirname, '.auth_info_baileys');
         if (fs.existsSync(authPath)) fs.rmSync(authPath, { recursive: true, force: true });
-        
+
         // Respond immediately, init in background
         if (global.io) global.io.emit('dashboard_update');
         res.json({ success: true, message: 'Logged out. Generating new QR code...' });
@@ -1516,16 +1539,16 @@ app.post('/api/whatsapp/reconnect', async (req, res) => {
     try {
         console.log('[WhatsApp Admin] Re-initializing WhatsApp client manually...');
         clearAuthTimeout();
-        
+
         whatsappStatus.status = 'initializing';
         whatsappStatus.qr = null;
         whatsappStatus.qrDataUrl = null;
         whatsappStatus.lastStateChange = Date.now();
-        
+
         if (whatsappClient) {
             try { whatsappClient.end(new Error('Manual Reconnect')); } catch (e) { /* ignore */ }
         }
-        
+
         // Respond immediately, init in background
         if (global.io) global.io.emit('dashboard_update');
         res.json({ success: true, message: 'Re-initialization started. QR code will appear shortly.' });
@@ -1635,7 +1658,7 @@ function setupBaileysEvents(sock) {
         if (connection === 'close') {
             const shouldReconnect = lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut;
             console.log('[WhatsApp] Connection closed due to', lastDisconnect?.error?.message || lastDisconnect?.error, 'reconnecting:', shouldReconnect);
-            
+
             clearAuthTimeout();
             whatsappStatus.status = 'disconnected';
             whatsappStatus.qr = null;
@@ -1678,7 +1701,7 @@ function setupBaileysEvents(sock) {
             if (m.type !== 'notify') return;
             for (const msg of m.messages) {
                 if (!msg.message || msg.key.fromMe) continue;
-                
+
                 const jid = msg.key.remoteJid;
                 if (!isJidGroup(jid)) continue;
 
@@ -1719,7 +1742,7 @@ function setupBaileysEvents(sock) {
                     }
                 } else if (messageType === 'audioMessage' || messageType === 'ptvMessage') {
                     console.log("Voice note received");
-                    const buffer = await downloadMediaMessage(msg, 'buffer', { }, { logger: pino({ level: 'silent' }) });
+                    const buffer = await downloadMediaMessage(msg, 'buffer', {}, { logger: pino({ level: 'silent' }) });
                     const filename = `voice_${Date.now()}.ogg`;
                     fs.writeFileSync(filename, buffer);
                     console.log("Saved audio file:", filename);
@@ -1757,7 +1780,7 @@ function gracefulShutdown(signal) {
     console.log(`\n[${signal}] Initiating graceful shutdown...`);
     if (whatsappClient) {
         console.log('Closing WhatsApp client...');
-        try { whatsappClient.end(new Error('Shutdown')); } catch(e) {}
+        try { whatsappClient.end(new Error('Shutdown')); } catch (e) { }
     }
     console.log('Closing HTTP server...');
     httpServer.close(() => {
@@ -1767,7 +1790,7 @@ function gracefulShutdown(signal) {
             process.exit(0);
         });
     });
-    
+
     // Fallback force exit after 10 seconds
     setTimeout(() => {
         console.error('Could not close connections in time, forcefully shutting down');
@@ -1784,10 +1807,10 @@ httpServer.listen(PORT, async () => {
     console.log(`  Express Dashboard Backend running on port ${PORT}`);
     console.log(`  API Access: http://localhost:${PORT}/api/requests`);
     console.log(`==================================================`);
-    
+
     // Ensure whatsapp_groups table exists
     await ensureWhatsappGroupsTable();
-    
+
     // Start WhatsApp Bot Singleton in the same process!
     console.log('Initializing WhatsApp Client singleton...');
     safeInitialize();

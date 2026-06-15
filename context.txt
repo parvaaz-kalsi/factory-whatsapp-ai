@@ -10,10 +10,32 @@ The Factory WhatsApp AI Dashboard is a comprehensive full-stack application desi
 
 ## Core Architecture & Workflow
 
+### Workflow Flowchart
+
+```mermaid
+graph TD
+    A[Worker sends WhatsApp message] -->|Baileys Bot| B(Backend Server)
+    B -->|Mutex Queue| C{Gemini AI Parsing}
+    C -->|Extracts EXACT text| D[DB: Insert as pending_review]
+    D -->|Socket.io| E[Editor Dashboard]
+    E -->|Click AI Suggestion| E1[Auto-fill from Master Inventory]
+    E -->|Edit & Add Rate/Qty| F{Editor Decision}
+    F -->|Reject| Z[Archived/Rejected]
+    F -->|Forward| G[DB: Update to reviewed]
+    G -->|Socket.io| H[Approver / Manager Dashboard]
+    H -->|Final Edits| I{Approver Decision}
+    I -->|Reject| Z
+    I -->|Approve| J[DB: Update to approved]
+    J -->|Socket.io| K[Approved Queue / Receiver Dashboard]
+    K -->|Physical Delivery| L{Receiver Action}
+    L -->|Edit final qty/specs| M[Mark Received]
+    M --> N[DB: Update to received / Add to Inventory]
+```
+
 ### 1. Data Ingestion (WhatsApp -> AI -> DB)
 1. **WhatsApp Listener**: The backend runs a Baileys client simulating a WhatsApp Web session. It listens to active, configured WhatsApp groups.
-2. **AI Parsing**: When a message arrives, it is placed in a Mutex queue (`geminiMutex`) to prevent API rate-limiting. Google Gemini AI processes the raw text to extract structured fields: `Part Name`, `Qty`, `Size`, `Material`, `Machine`, and `Vendor`. The AI is instructed to strictly preserve the exact text typed by the worker.
-3. **Inventory Matching**: The backend cross-references the extracted part name with the NeonDB `inventory` table. If a match is found, it populates AI Suggestions (`suggestedMatch`, `sku`/P.No, `reg_no`/Reg.No, `availableStock`, `price`), but DOES NOT overwrite the user's raw text.
+2. **AI Parsing**: When a message arrives, it is placed in a Mutex queue (`geminiMutex`) to prevent API rate-limiting. Google Gemini AI processes the raw text to extract structured fields: `Part Name`, `Qty`, `Size`, `Material`, `Machine`, and `Vendor`. The AI is instructed to strictly preserve the exact text typed by the worker and NEVER auto-populate missing fields like SKU or Rate.
+3. **Inventory Matching**: The backend cross-references the extracted part name with the NeonDB `inventory` table. If a match is found, it ONLY populates the `suggestedMatch` field for the UI, leaving all extracted data exactly as requested.
 4. **Database Insertion**: The parsed request is inserted into the `pending_requests` table in NeonDB with the initial status set to `pending_review`.
 5. **Live Update**: A Socket.io event (`dashboard_update`) is emitted, instantly refreshing the frontend UI without requiring a page reload.
 
@@ -22,16 +44,24 @@ The frontend dashboard provides role-based access control, steering demands thro
 - **Observer**: Read-only access. Can view KPIs and historical data but cannot modify requests.
 - **Editor (Reviewer)**: Responsible for the first pass.
   - Sees requests in the `pending_review` stage.
-  - Can inline-edit fields (Part Name, Qty, Size, Material, Machine, Vendor, P.No, Reg.No, Rate).
+  - Can click the "AI Suggestion" alert to automatically auto-fill the form with Master Inventory data.
+  - Must explicitly provide a valid `Quantity` and `Rate (Est. Price)` before forwarding.
   - Can reject requests or **Forward** them to the Manager (changes DB status to `reviewed`).
 - **Approver (Manager)**: Final authority.
   - Sees requests that have been forwarded (`reviewed`).
-  - Can make final edits.
+  - Can make final edits (changes save directly without being overridden by inventory defaults).
   - Can **Approve** requests (changes DB status to `approved`, logging `approved_by` and `approved_at`).
   - If an approved item does not exist in the master `inventory`, approving it automatically creates a new inventory record with 0 stock.
+- **Receiver**: Responsible for physical goods arrival.
+  - Sees approved requests waiting in the "Approved Queue" (status: `approved`).
+  - Can view and edit entries to reflect the *actual* quantity or specs received versus what was requested.
+  - Marks items as "Received" (changes status to `received`).
 
-### 3. Fulfillment & Export
-- **Receiving**: Once items physically arrive at the factory, approved requests can be marked as "Received" (changes status to `received`). This closes the lifecycle and optionally increments inventory stock.
+### 3. Fulfillment, Dashboards & Export
+- **KPI Metrics Unified**: The dashboard displays a unified KPI panel ("New Worker Demands", "Pending Approval", "Approved Not Received") across the Editor, Approver, and Receiver dashboards to provide a cohesive view of the pipeline.
+- **Approved Queue vs History**: 
+  - **Approved Queue**: Shows  demands actively in-transit (status: `approved`), waiting for the Receiver.
+  - **Approved History**: Shows the full historical log of demands that have passed approval (status: `approved` OR `received`).
 - **Reporting**: The dashboard offers comprehensive Export capabilities (Excel & PDF) and a "Print Demand List" function. By default, these reports filter for demands that are **"Approved but not received"**.
 
 ## Recent Technical Fixes & Enhancements
@@ -42,7 +72,7 @@ The frontend dashboard provides role-based access control, steering demands thro
 
 ### Backend Enhancements
 - **Endpoints updated**: `/edit`, `/forward`, and `/approve` routes now properly capture and persist explicit edits to all fields, including `sku` and `reg_no`.
-- **Data Mapping Fix**: Fixed the `/api/pending` fetch route so it prioritizes explicitly edited `sku` and `reg_no` values from the database over raw inventory matches, ensuring the dashboard perfectly reflects human edits.
+- **Data Mapping Fix**: Fixed the `/api/pending` fetch route so it prioritizes explicitly edited values and never artificially overwrites them with raw inventory defaults on load.
 - **AI Rate Limits**: Resolved 429 concurrency errors from the Gemini API by implementing a strict promise-based Mutex queue for batch message processing.
 
 ### Frontend UI/UX Improvements
@@ -53,7 +83,7 @@ The frontend dashboard provides role-based access control, steering demands thro
 
 ### Editor/Reviewer Enhancements
 - **Strict Forwarding Validation**: Enforced a new rule where an Editor *cannot* forward a demand to the Approver without first explicitly editing the request and providing a valid `Quantity` and `Rate (Est. Price)`.
-- **Role-based KPIs**: Upgraded the Editor view so that it now sees the exact same actionable KPI metrics panel (`ApproverMetrics`) as the Manager, instead of generic system metrics.
+- **AI Suggestion Box**: Clicking the AI suggestion gracefully populates the form in edit mode without forcefully altering the initial raw data.
 
 ### System & Stability
 - **Missing Dependency Fix**: Resolved an `Uncaught Exception` during server startup by cleanly installing the `helmet` security package on the backend.
