@@ -39,7 +39,7 @@ async function dbInit() {
         detail2 VARCHAR(255),
         category VARCHAR(255),
         reg_no VARCHAR(255),
-        sku VARCHAR(255) UNIQUE,
+        sku VARCHAR(255),
         vendor VARCHAR(255),
         location VARCHAR(255),
         available_qty INTEGER DEFAULT 0,
@@ -89,6 +89,7 @@ async function dbInit() {
       ALTER TABLE pending_requests ADD COLUMN IF NOT EXISTS category VARCHAR(100);
       ALTER TABLE pending_requests ADD COLUMN IF NOT EXISTS price VARCHAR(100);
       ALTER TABLE pending_requests ADD COLUMN IF NOT EXISTS reg_no VARCHAR(100);
+      ALTER TABLE pending_requests ADD COLUMN IF NOT EXISTS is_ordered BOOLEAN DEFAULT FALSE;
     `);
 
     await client.query(`
@@ -130,10 +131,6 @@ async function dbInit() {
       
       // SKU (P.No. in the spreadsheet)
       let sku = (row['P.No.'] || '').toString().trim();
-      if (!sku) {
-        // Fallback: Generate a pseudo-SKU if P.No is not defined to avoid empty SKU collisions
-        sku = 'GEN-' + partName.substring(0, 5).toUpperCase().replace(/[^A-Z0-9]/g, '') + '-' + Math.floor(Math.random() * 10000);
-      }
 
       const vendor = (row['Vendor'] || '').toString().trim();
       const location = (row['Locations'] || '').toString().trim();
@@ -148,34 +145,34 @@ async function dbInit() {
       let price = parseFloat(row['Unit price']);
       if (isNaN(price)) price = 0.00;
 
-      // Upsert query
-      await client.query(`
-        INSERT INTO inventory (
-          part_name, drawing_no, product_description, part_group, 
-          material, detail1, detail2, category, reg_no, sku, 
-          vendor, location, available_qty, unit, price
-        )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
-        ON CONFLICT (sku) DO UPDATE SET
-          part_name = EXCLUDED.part_name,
-          drawing_no = EXCLUDED.drawing_no,
-          product_description = EXCLUDED.product_description,
-          part_group = EXCLUDED.part_group,
-          material = EXCLUDED.material,
-          detail1 = EXCLUDED.detail1,
-          detail2 = EXCLUDED.detail2,
-          category = EXCLUDED.category,
-          reg_no = EXCLUDED.reg_no,
-          vendor = EXCLUDED.vendor,
-          location = EXCLUDED.location,
-          available_qty = EXCLUDED.available_qty,
-          unit = EXCLUDED.unit,
-          price = EXCLUDED.price;
-      `, [
-        partName, drawingNo, productDescription, partGroup,
-        material, detail1, detail2, category, regNo, sku,
-        vendor, location, qty, unit, price
-      ]);
+      // Upsert logic based on part_name instead of sku constraint
+      const existingRes = await client.query('SELECT id FROM inventory WHERE part_name = $1', [partName]);
+      if (existingRes.rows.length > 0) {
+        await client.query(`
+          UPDATE inventory SET
+            drawing_no = $2, product_description = $3, part_group = $4,
+            material = $5, detail1 = $6, detail2 = $7, category = $8, reg_no = $9, sku = $10,
+            vendor = $11, location = $12, available_qty = $13, unit = $14, price = $15
+          WHERE id = $1
+        `, [
+          existingRes.rows[0].id, drawingNo, productDescription, partGroup,
+          material, detail1, detail2, category, regNo, sku,
+          vendor, location, qty, unit, price
+        ]);
+      } else {
+        await client.query(`
+          INSERT INTO inventory (
+            part_name, drawing_no, product_description, part_group, 
+            material, detail1, detail2, category, reg_no, sku, 
+            vendor, location, available_qty, unit, price
+          )
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+        `, [
+          partName, drawingNo, productDescription, partGroup,
+          material, detail1, detail2, category, regNo, sku,
+          vendor, location, qty, unit, price
+        ]);
+      }
 
       successCount++;
     }

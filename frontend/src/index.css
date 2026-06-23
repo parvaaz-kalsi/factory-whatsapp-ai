@@ -1475,3 +1475,13 @@ body {
   padding-top: 1rem;
   border-top: 1px solid var(--border-light);
 }
+
+/* Global button hover effect to lighten buttons */
+button {
+  transition: all 0.2s ease, filter 0.2s ease;
+}
+
+button:hover {
+  filter: brightness(1.15);
+}
+

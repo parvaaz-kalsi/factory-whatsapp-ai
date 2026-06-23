@@ -50,7 +50,7 @@ const CardHeaderIllustration = ({ category }) => {
   );
 };
 
-export default function PendingCard({ item, voiceNotes = [], currentUserRole, onApprove, onReject, onForward, activeTab, onReceive, inventoryItems = [], rejectingId }) {
+export default function PendingCard({ item, voiceNotes = [], currentUserRole, onApprove, onReject, onForward, activeTab, onReceive, inventoryItems = [], rejectingId, approvingId, forwardingId, receivingId }) {
   const category = getCategory(item.partName);
   
   // Custom voice player state
@@ -194,23 +194,7 @@ export default function PendingCard({ item, voiceNotes = [], currentUserRole, on
   const handleSkuChange = (e) => {
     const val = e.target.value;
     console.log('[Console Log - PendingCard] Selected SKU (P No.):', val);
-    const matched = inventoryItems.find(i => i.sku === val);
-    if (matched) {
-      setFormData(prev => ({
-        ...prev,
-        sku: val,
-        partName: matched.partName || prev.partName,
-        regNo: matched.regNo || '',
-        category: matched.category !== '—' ? (matched.category || prev.category) : prev.category,
-        size: matched.size !== '—' ? (matched.size || prev.size) : prev.size,
-        material: matched.material !== '—' ? (matched.material || prev.material) : prev.material,
-        machine: matched.machine !== 'General Compatibility' ? (matched.machine || prev.machine) : prev.machine,
-        vendor: matched.vendor !== '—' ? (matched.vendor || prev.vendor) : prev.vendor,
-        price: String(matched.price || prev.price).replace(/[\$Rs\.\s]/g, match => match === '.' ? '.' : '')
-      }));
-    } else {
-      setFormData(prev => ({ ...prev, sku: val }));
-    }
+    setFormData(prev => ({ ...prev, sku: val }));
   };
 
   const handleRegNoChange = (e) => {
@@ -336,13 +320,13 @@ export default function PendingCard({ item, voiceNotes = [], currentUserRole, on
             position: 'absolute',
             top: '0.75rem',
             right: '0.75rem',
-            backgroundColor: item.status === 'reviewed' ? '#eff6ff' : '#fef3c7',
-            color: item.status === 'reviewed' ? '#1e40af' : '#b45309',
+            backgroundColor: item.status === 'draft' ? '#f3f4f6' : (item.status === 'reviewed' ? '#eff6ff' : '#fef3c7'),
+            color: item.status === 'draft' ? '#4b5563' : (item.status === 'reviewed' ? '#1e40af' : '#b45309'),
             fontSize: '0.7rem',
             fontWeight: 600
           }}
         >
-          {item.status === 'reviewed' ? 'Reviewed (Awaiting Manager)' : 'Awaiting Review'}
+          {item.status === 'draft' ? 'Draft' : (item.status === 'reviewed' ? 'Reviewed (Awaiting Manager)' : 'Awaiting Review')}
         </span>
       </div>
 
@@ -551,10 +535,13 @@ export default function PendingCard({ item, voiceNotes = [], currentUserRole, on
             <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem' }}>
               <button 
                 className="btn-refresh" 
-                style={{ flexGrow: 1, padding: '0.4rem', fontSize: '0.8rem', justifyContent: 'center' }} 
+                disabled={receivingId === item.id}
+                style={{ flexGrow: 1, padding: '0.4rem', fontSize: '0.8rem', justifyContent: 'center', opacity: receivingId === item.id ? 0.7 : 1 }} 
                 onClick={handleSaveEdit}
               >
-                {activeTab === 'receiving' ? 'Confirm & Mark as Received' : 'Save'}
+                {receivingId === item.id ? (
+                  <><FiRefreshCw size={14} style={{ animation: 'spin 1s linear infinite', marginRight: '0.35rem' }} /> Processing...</>
+                ) : activeTab === 'receiving' ? 'Confirm & Mark as Received' : 'Save'}
               </button>
               <button 
                 className="btn-refresh" 
@@ -817,7 +804,7 @@ export default function PendingCard({ item, voiceNotes = [], currentUserRole, on
                       color: 'var(--accent-blue-text)',
                       fontWeight: 600,
                       fontSize: '0.85rem',
-                      padding: '0.55rem'
+                      padding: '0.55rem',
                     }}
                   >
                     Review & Receive
@@ -827,6 +814,7 @@ export default function PendingCard({ item, voiceNotes = [], currentUserRole, on
                   <>
                     <button 
                       onClick={() => onForward(item.id, formData)}
+                      disabled={forwardingId === item.id}
                       className="btn-refresh"
                       style={{
                         flexGrow: 1,
@@ -836,10 +824,16 @@ export default function PendingCard({ item, voiceNotes = [], currentUserRole, on
                         color: 'var(--accent-green-text)',
                         fontWeight: 600,
                         fontSize: '0.85rem',
-                        padding: '0.55rem'
+                        padding: '0.55rem',
+                        opacity: forwardingId === item.id ? 0.7 : 1,
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '0.35rem'
                       }}
                     >
-                      Forward for Approval
+                      {forwardingId === item.id ? (
+                        <><FiRefreshCw size={14} style={{ animation: 'spin 1s linear infinite' }} /> Processing...</>
+                      ) : 'Forward for Approval'}
                     </button>
                     
                     <button 
@@ -871,6 +865,7 @@ export default function PendingCard({ item, voiceNotes = [], currentUserRole, on
                   <>
                     <button 
                       onClick={() => onApprove(item.id, formData)}
+                      disabled={approvingId === item.id}
                       className="btn-refresh"
                       style={{
                         flexGrow: 1,
@@ -880,10 +875,16 @@ export default function PendingCard({ item, voiceNotes = [], currentUserRole, on
                         color: 'var(--accent-green-text)',
                         fontWeight: 600,
                         fontSize: '0.85rem',
-                        padding: '0.55rem'
+                        padding: '0.55rem',
+                        opacity: approvingId === item.id ? 0.7 : 1,
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '0.35rem'
                       }}
                     >
-                      Approve
+                      {approvingId === item.id ? (
+                        <><FiRefreshCw size={14} style={{ animation: 'spin 1s linear infinite' }} /> Processing...</>
+                      ) : 'Approve'}
                     </button>
                     
                     <button 

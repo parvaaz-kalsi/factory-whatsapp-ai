@@ -9,7 +9,7 @@ import { FiRefreshCw, FiAlertTriangle, FiInfo, FiTrash2, FiClipboard, FiInbox, F
 import MultiTagInput from './MultiTagInput';
 
 export default function DashboardContent(props) { // Force HMR reload
-  const { loading, activeTab, kpiData, filteredRequests, viewMode, currentPendingIndex, setCurrentPendingIndex, handleApprove, handleReject, handleForward, rejectingId, setRejectingId, rejectReason, setRejectReason, currentUserRole, inventoryItems, selectedInventoryMachine, setSelectedInventoryMachine, uniqueInventoryMachines, inventoryLoading, handleReceive, editingRowId, setEditingRowId, editFormData, setEditFormData, handleSaveInlineEdit, inventoryEditingId, setInventoryEditingId, inventoryEditFormData, setInventoryEditFormData, handleSaveInventoryEdit, showInventoryEditModal, setShowInventoryEditModal, handlePartNameChange, handleSkuChange, searchQuery, setSearchQuery, selectedMachine, setSelectedMachine, selectedVendor, setSelectedVendor, selectedStatus, setSelectedStatus, uniqueMachines, uniqueVendors, whatsappStatus, whatsappGroups, setWhatsappGroups, fetchWhatsappStatus, fetchWhatsappGroups, showCustomDemandModal, setShowCustomDemandModal, customDemandData, setCustomDemandData, submitCustomDemand, globalModal, setGlobalModal, handleClearFilters, filteredInventory, hasNoActiveGroups, setActiveTab, pendingRequests, apiLimitCount, apiLimitMax, setCurrentUserRole, setViewMode, fetchData, refreshing, setRefreshing, globalUniquePartNames, globalUniqueMaterials, globalUniqueMachines, globalUniqueVendors, globalUniqueSKUs, globalUniqueRegNos, globalUniqueSizes, globalUniqueUnits, handleCustomDemandPartNameChange, handleCustomDemandSkuChange, handleCustomDemandRegNoChange, voiceNotes, exportStartDate, setExportStartDate, exportEndDate, setExportEndDate, exportToExcel, exportToPDF, printDemandList, customConfirm, availableGroups, handleToggleGroupActive } = props;
+  const { approvingId, forwardingId, receivingId, orderingId, loading, activeTab, kpiData, filteredRequests, viewMode, currentPendingIndex, setCurrentPendingIndex, handleApprove, handleReject, handleForward, rejectingId, setRejectingId, rejectReason, setRejectReason, currentUserRole, inventoryItems, selectedInventoryMachine, setSelectedInventoryMachine, uniqueInventoryMachines, inventoryLoading, handleReceive, handleToggleOrdered, editingRowId, setEditingRowId, editFormData, setEditFormData, handleSaveInlineEdit, inventoryEditingId, setInventoryEditingId, inventoryEditFormData, setInventoryEditFormData, handleSaveInventoryEdit, showInventoryEditModal, setShowInventoryEditModal, handlePartNameChange, handleSkuChange, searchQuery, setSearchQuery, selectedMachine, setSelectedMachine, selectedVendor, setSelectedVendor, selectedStatus, setSelectedStatus, uniqueMachines, uniqueVendors, whatsappStatus, whatsappGroups, setWhatsappGroups, fetchWhatsappStatus, fetchWhatsappGroups, showCustomDemandModal, setShowCustomDemandModal, customDemandData, setCustomDemandData, submitCustomDemand, globalModal, setGlobalModal, handleClearFilters, filteredInventory, hasNoActiveGroups, setActiveTab, pendingRequests, apiLimitCount, apiLimitMax, setCurrentUserRole, setViewMode, fetchData, refreshing, setRefreshing, globalUniquePartNames, globalUniqueMaterials, globalUniqueMachines, globalUniqueVendors, globalUniqueSKUs, globalUniqueRegNos, globalUniqueSizes, globalUniqueUnits, handleCustomDemandPartNameChange, handleCustomDemandSkuChange, handleCustomDemandRegNoChange, voiceNotes, exportStartDate, setExportStartDate, exportEndDate, setExportEndDate, exportToExcel, exportToPDF, printDemandList, customConfirm, availableGroups, handleToggleGroupActive } = props;
 
   return (
     <>
@@ -792,8 +792,9 @@ export default function DashboardContent(props) { // Force HMR reload
                   editFormData={editFormData}
                   setEditFormData={setEditFormData}
                   handleSaveInlineEdit={handleSaveInlineEdit}
-                                                      setEditingRowId={setEditingRowId}
+                  setEditingRowId={setEditingRowId}
                   handleReceive={handleReceive}
+                  handleToggleOrdered={handleToggleOrdered}
                   handleReject={handleReject}
                   handleApprove={handleApprove}
                   handleForward={handleForward}
@@ -801,6 +802,10 @@ export default function DashboardContent(props) { // Force HMR reload
                   setRejectingId={setRejectingId}
                   rejectReason={rejectReason}
                   setRejectReason={setRejectReason}
+                  approvingId={approvingId}
+                  forwardingId={forwardingId}
+                  receivingId={receivingId}
+                  orderingId={orderingId}
                 />
 
               </div>
@@ -845,6 +850,9 @@ export default function DashboardContent(props) { // Force HMR reload
                         onReceive={handleReceive}
                         inventoryItems={inventoryItems}
                         rejectingId={rejectingId}
+                        approvingId={approvingId}
+                        forwardingId={forwardingId}
+                        receivingId={receivingId}
                       />
                     )}
                   </div>
@@ -906,6 +914,8 @@ export default function DashboardContent(props) { // Force HMR reload
                     key={item.id} 
                     item={item} 
                     voiceNotes={voiceNotes} 
+                    currentUserRole={currentUserRole}
+                    handleToggleOrdered={handleToggleOrdered}
                   />
                 ))}
               </div>
@@ -1004,7 +1014,10 @@ export default function DashboardContent(props) { // Force HMR reload
 
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem', marginTop: '2rem' }}>
               <button onClick={() => setShowCustomDemandModal(false)} className="modal-btn modal-btn-cancel">Cancel</button>
-              <button onClick={submitCustomDemand} className="modal-btn modal-btn-primary" style={{ backgroundColor: 'var(--accent-blue-bg)', color: 'var(--accent-blue-text)', borderColor: '#bfdbfe' }}>
+              <button onClick={() => submitCustomDemand(true)} className="modal-btn" style={{ backgroundColor: 'var(--bg-secondary)', color: 'var(--text-primary)', border: '1px solid var(--border-light)' }}>
+                Save as Draft
+              </button>
+              <button onClick={() => submitCustomDemand(false)} className="modal-btn modal-btn-primary" style={{ backgroundColor: 'var(--accent-blue-bg)', color: 'var(--accent-blue-text)', borderColor: '#bfdbfe' }}>
                 Forward to Approver
               </button>
             </div>

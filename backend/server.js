@@ -181,6 +181,7 @@ async function ensurePendingRequestsColumns() {
         await pool.query('ALTER TABLE pending_requests ADD COLUMN IF NOT EXISTS category VARCHAR(100);');
         await pool.query('ALTER TABLE pending_requests ADD COLUMN IF NOT EXISTS price VARCHAR(100);');
         await pool.query('ALTER TABLE pending_requests ADD COLUMN IF NOT EXISTS reg_no VARCHAR(100);');
+        await pool.query('ALTER TABLE pending_requests ADD COLUMN IF NOT EXISTS is_ordered BOOLEAN DEFAULT FALSE;');
         console.log('Pending requests columns verified/added successfully.');
     } catch (err) {
         console.error('Error verifying pending requests columns:', err);
@@ -646,7 +647,8 @@ app.get('/api/requests', async (req, res) => {
                 approvedAt: row.approved_at,
                 receivedAt: row.received_at,
                 demandTimestamp: row.demand_timestamp,
-                status: row.status
+                status: row.status,
+                isOrdered: row.is_ordered || false
             };
         });
 
@@ -720,7 +722,7 @@ async function findInventoryMatch(partName, sku) {
 // GET all pending demands
 app.get('/api/pending', async (req, res) => {
     try {
-        const result = await pool.query("SELECT * FROM pending_requests WHERE status IS NULL OR status IN ('pending_review', 'reviewed', 'approved') ORDER BY demand_timestamp DESC");
+        const result = await pool.query("SELECT * FROM pending_requests WHERE status IS NULL OR status IN ('pending_review', 'draft', 'reviewed', 'approved') ORDER BY demand_timestamp DESC");
 
         // Map database columns to camelCase properties and resolve dynamic live stock matching
         const requests = await Promise.all(result.rows.map(async (row) => {
@@ -771,7 +773,8 @@ app.get('/api/pending', async (req, res) => {
                 approvedAt: row.approved_at,
                 status: row.status || 'pending_review',
                 editedBy: row.edited_by || '',
-                approvedBy: row.approved_by || ''
+                approvedBy: row.approved_by || '',
+                isOrdered: row.is_ordered || false
             };
         }));
 
@@ -894,10 +897,7 @@ app.post('/api/pending/:id/approve', async (req, res) => {
         const partNameToCheck = approvedData.partName || dbRow.part_name || '';
         const itemCheck = await pool.query('SELECT * FROM inventory WHERE part_name ILIKE $1', [partNameToCheck.trim()]);
         if (itemCheck.rows.length === 0) {
-            const cleanName = partNameToCheck.trim().substring(0, 5).toUpperCase().replace(/[^A-Z0-9]/g, '');
-            const generatedSku = 'GEN-' + cleanName + '-' + Math.floor(Math.random() * 10000);
-
-            console.log(`[Inventory Creation] Creating new inventory catalog entry for "${partNameToCheck}" with SKU "${approvedData.sku || generatedSku}", Reg No: "${approvedData.regNo || ''}", stock quantity = 0, rate = ${approvedData.price || approvedData.rate || '0.00'}`);
+            console.log(`[Inventory Creation] Creating new inventory catalog entry for "${partNameToCheck}" with SKU "${approvedData.sku || ''}", Reg No: "${approvedData.regNo || ''}", stock quantity = 0, rate = ${approvedData.price || approvedData.rate || '0.00'}`);
 
             await pool.query(`
                 INSERT INTO inventory (
@@ -908,7 +908,7 @@ app.post('/api/pending/:id/approve', async (req, res) => {
                 approvedData.machine || dbRow.machine || 'General Compatibility',
                 approvedData.material || dbRow.material || '',
                 approvedData.size || dbRow.size || '', // detail1
-                approvedData.sku || generatedSku,      // P No. (sku)
+                approvedData.sku || '',                // P No. (sku)
                 approvedData.regNo || dbRow.reg_no || '', // Reg No.
                 approvedData.vendor || dbRow.vendor || '',
                 parseFloat(approvedData.price || approvedData.rate || dbRow.rate || '0') || 0.00,
@@ -989,6 +989,28 @@ app.post('/api/pending/:id/receive', async (req, res) => {
     }
 });
 
+// POST Toggle ordered_from_market status
+app.post('/api/pending/:id/order', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { isOrdered } = req.body;
+
+        const checkResult = await pool.query('SELECT * FROM pending_requests WHERE id = $1', [id]);
+        if (checkResult.rows.length === 0) {
+            return res.status(404).json({ error: 'Request not found' });
+        }
+
+        await pool.query('UPDATE pending_requests SET is_ordered = $1 WHERE id = $2', [isOrdered, id]);
+        
+        console.log(`Updated ordered status for ${id} to ${isOrdered}`);
+        if (global.io) global.io.emit('dashboard_update');
+        res.json({ success: true, isOrdered });
+    } catch (err) {
+        console.error('Error updating order status:', err);
+        res.status(500).json({ error: 'Failed to update order status' });
+    }
+});
+
 // POST Edit/Review a pending request and update it in Neon DB (edited_at = NOW())
 app.post('/api/pending/:id/edit', async (req, res) => {
     try {
@@ -1049,8 +1071,16 @@ app.post('/api/pending/:id/edit', async (req, res) => {
 app.post('/api/pending/custom', async (req, res) => {
     try {
         const item = req.body;
-        if (!item || !item.partName || !item.qty) {
-            return res.status(400).json({ error: 'Part Name and Quantity are required' });
+        const status = item.status || 'reviewed'; // Default to reviewed if not provided
+
+        // Validate part name (always required)
+        if (!item || !item.partName) {
+            return res.status(400).json({ error: 'Part Name is required' });
+        }
+        
+        // If not a draft, qty is required
+        if (status !== 'draft' && !item.qty) {
+            return res.status(400).json({ error: 'Quantity is required to forward demand' });
         }
 
         const id = Date.now() + '-CUSTOM-' + Math.floor(Math.random() * 1000);
@@ -1061,7 +1091,7 @@ app.post('/api/pending/custom', async (req, res) => {
             INSERT INTO pending_requests (
                 id, part_name, qty, unit, size, material, machine, vendor, requested_by, 
                 demand_timestamp, received_at, rate, sku, reg_no, status, edited_by, edited_at, forwarded_at, category
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW(), $10, $11, $12, $13, 'reviewed', $14, NOW(), NOW(), $15)
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW(), $10, $11, $12, $13, $14, $15, NOW(), NOW(), $16)
             RETURNING *
         `;
 
@@ -1079,6 +1109,7 @@ app.post('/api/pending/custom', async (req, res) => {
             item.price || item.rate || '',
             item.sku || '',
             item.regNo || '',
+            status,
             editorName,
             item.category || ''
         ];

@@ -4,7 +4,7 @@ import { standardizeUnit, displayQty, displayUnit } from '../../utils/unitStanda
 import MultiTagInput from './MultiTagInput';
 
 export default function DemandTable(props) {
-  const { filteredRequests, editingRowId, activeTab, currentUserRole, inventoryItems, editFormData, setEditFormData, handleSaveInlineEdit, setEditingRowId, handleReceive, handleReject, handleApprove, handleForward, rejectingId, setRejectingId, rejectReason, setRejectReason } = props;
+  const { filteredRequests, editingRowId, activeTab, currentUserRole, inventoryItems, editFormData, setEditFormData, handleSaveInlineEdit, setEditingRowId, handleReceive, handleToggleOrdered, handleReject, handleApprove, handleForward, rejectingId, setRejectingId, rejectReason, setRejectReason, approvingId, forwardingId, receivingId, orderingId } = props;
 
   // Options extracted dynamically from master inventory catalog for inline editing
   const uniqueUnits = Array.from(new Set([
@@ -88,24 +88,7 @@ export default function DemandTable(props) {
   const handleSkuChange = (e) => {
     const val = e.target.value;
     console.log('[Console Log - List View Edit] Selected SKU (P No.):', val);
-    const matched = inventoryItems.find(i => i.sku === val);
-    if (matched) {
-      setEditFormData(prev => ({
-        ...prev,
-        sku: val,
-        partName: matched.partName || prev.partName,
-        regNo: matched.regNo || '',
-        size: matched.size !== '—' ? (matched.size || prev.size) : prev.size,
-        material: matched.material !== '—' ? (matched.material || prev.material) : prev.material,
-        category: matched.category !== '—' ? (matched.category || prev.category) : prev.category,
-        machine: matched.machine !== 'General Compatibility' ? (matched.machine || prev.machine) : prev.machine,
-        vendor: matched.vendor !== '—' ? (matched.vendor || prev.vendor) : prev.vendor,
-        price: matched.price || prev.price,
-        unit: matched.unit || prev.unit
-      }));
-    } else {
-      setEditFormData(prev => ({ ...prev, sku: val }));
-    }
+    setEditFormData(prev => ({ ...prev, sku: val }));
   };
 
   const handleRegNoChange = (e) => {
@@ -150,7 +133,7 @@ export default function DemandTable(props) {
             <th style={{ padding: '1rem 1.25rem', fontWeight: 600, color: 'var(--text-secondary)' }}>Requested By</th>
             <th style={{ padding: '1rem 1.25rem', fontWeight: 600, color: 'var(--text-secondary)' }}>Timestamp</th>
             <th style={{ padding: '1rem 1.25rem', fontWeight: 600, color: 'var(--text-secondary)' }}>Rate</th>
-            {(activeTab === 'pending' || activeTab === 'receiving') && currentUserRole !== 'observer' && (
+            {(activeTab === 'pending' || activeTab === 'receiving' || (activeTab === 'approved' && currentUserRole === 'reviewer')) && currentUserRole !== 'observer' && (
               <th style={{ padding: '1rem 1.25rem', fontWeight: 600, color: 'var(--text-secondary)', textAlign: 'right' }}>Actions</th>
             )}
           </tr>
@@ -177,6 +160,10 @@ export default function DemandTable(props) {
               statusBg = '#fff1f2';
               statusColor = '#be123c';
               statusLabel = 'Rejected';
+            } else if (item.status === 'draft') {
+              statusBg = '#f3f4f6';
+              statusColor = '#4b5563';
+              statusLabel = 'Draft';
             }
 
             return (
@@ -418,15 +405,41 @@ export default function DemandTable(props) {
                 </td>
 
                 {/* Actions Column */}
-                {(activeTab === 'pending' || activeTab === 'receiving') && currentUserRole !== 'observer' && (
+                {(activeTab === 'pending' || activeTab === 'receiving' || (activeTab === 'approved' && currentUserRole === 'reviewer')) && currentUserRole !== 'observer' && (
                   <td style={{ padding: '1rem 1.25rem', textAlign: 'right' }}>
-                    {activeTab === 'receiving' ? (
+                    {activeTab === 'approved' && currentUserRole === 'reviewer' ? (
                       <button 
                         className="btn-refresh" 
-                        style={{ padding: '0.3rem 0.6rem', fontSize: '0.75rem', backgroundColor: 'var(--accent-green-bg)', borderColor: '#bbf7d0', color: 'var(--accent-green-text)', fontWeight: 600 }}
+                        disabled={orderingId === item.id}
+                        style={{ 
+                          padding: '0.3rem 0.6rem', 
+                          fontSize: '0.75rem', 
+                          backgroundColor: item.isOrdered ? 'var(--bg-secondary)' : 'var(--accent-blue-bg)', 
+                          borderColor: item.isOrdered ? 'var(--border-medium)' : '#bfdbfe', 
+                          color: item.isOrdered ? 'var(--text-secondary)' : 'var(--accent-blue-text)', 
+                          fontWeight: 600,
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '0.25rem',
+                          marginLeft: 'auto',
+                          opacity: orderingId === item.id ? 0.7 : 1
+                        }}
+                        onClick={() => handleToggleOrdered(item.id, item.isOrdered)}
+                      >
+                        {orderingId === item.id ? (
+                          <><FiRefreshCw size={12} style={{ animation: 'spin 1s linear infinite' }} /> Processing</>
+                        ) : item.isOrdered ? <><FiCheck size={12} /> Ordered</> : 'Mark as Ordered'}
+                      </button>
+                    ) : activeTab === 'receiving' ? (
+                      <button 
+                        className="btn-refresh" 
+                        disabled={receivingId === item.id}
+                        style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', padding: '0.3rem 0.6rem', fontSize: '0.75rem', backgroundColor: 'var(--accent-green-bg)', borderColor: '#bbf7d0', color: 'var(--accent-green-text)', fontWeight: 600, opacity: receivingId === item.id ? 0.7 : 1 }}
                         onClick={() => handleReceive(item.id)}
                       >
-                        Mark as Received
+                        {receivingId === item.id ? (
+                          <><FiRefreshCw size={12} style={{ animation: 'spin 1s linear infinite' }} /> Processing</>
+                        ) : 'Mark as Received'}
                       </button>
                     ) : isEditingRow ? (
                       <div style={{ display: 'inline-flex', gap: '0.35rem' }}>
@@ -473,7 +486,8 @@ export default function DemandTable(props) {
                           <>
                             <button 
                               className="btn-refresh" 
-                              style={{ padding: '0.3rem 0.6rem', fontSize: '0.75rem', backgroundColor: 'var(--accent-green-bg)', borderColor: '#bbf7d0', color: 'var(--accent-green-text)' }}
+                              disabled={forwardingId === item.id}
+                              style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', padding: '0.3rem 0.6rem', fontSize: '0.75rem', backgroundColor: 'var(--accent-green-bg)', borderColor: '#bbf7d0', color: 'var(--accent-green-text)', opacity: forwardingId === item.id ? 0.7 : 1 }}
                               onClick={() => handleForward(item.id, {
                                 partName: item.partName,
                                 qty: item.qty,
@@ -486,22 +500,27 @@ export default function DemandTable(props) {
                                 price: item.price || item.rate
                               })}
                             >
-                              Forward
+                              {forwardingId === item.id ? (
+                                <><FiRefreshCw size={12} style={{ animation: 'spin 1s linear infinite' }} /> Processing</>
+                              ) : 'Forward'}
                             </button>
                             <button 
                               className="btn-refresh" 
-                              style={{ padding: '0.3rem 0.6rem', fontSize: '0.75rem', backgroundColor: 'var(--accent-rose-bg)', borderColor: '#fecaca', color: 'var(--accent-rose-text)', opacity: rejectingId === item.id ? 0.7 : 1 }}
+                              style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', padding: '0.3rem 0.6rem', fontSize: '0.75rem', backgroundColor: 'var(--accent-rose-bg)', borderColor: '#fecaca', color: 'var(--accent-rose-text)', opacity: rejectingId === item.id ? 0.7 : 1 }}
                               onClick={() => handleReject(item.id)}
                               disabled={rejectingId === item.id}
                             >
-                              {rejectingId === item.id ? 'Rejecting...' : 'Reject'}
+                              {rejectingId === item.id ? (
+                                <><FiRefreshCw size={12} style={{ animation: 'spin 1s linear infinite' }} /> Rejecting</>
+                              ) : 'Reject'}
                             </button>
                           </>
                         ) : (
                           <>
                             <button 
                               className="btn-refresh" 
-                              style={{ padding: '0.3rem 0.6rem', fontSize: '0.75rem', backgroundColor: 'var(--accent-green-bg)', borderColor: '#bbf7d0', color: 'var(--accent-green-text)' }}
+                              disabled={approvingId === item.id}
+                              style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', padding: '0.3rem 0.6rem', fontSize: '0.75rem', backgroundColor: 'var(--accent-green-bg)', borderColor: '#bbf7d0', color: 'var(--accent-green-text)', opacity: approvingId === item.id ? 0.7 : 1 }}
                               onClick={() => handleApprove(item.id, {
                                 partName: item.partName,
                                 qty: item.qty,
@@ -514,7 +533,9 @@ export default function DemandTable(props) {
                                 price: item.price || item.rate
                               })}
                             >
-                              Approve
+                              {approvingId === item.id ? (
+                                <><FiRefreshCw size={12} style={{ animation: 'spin 1s linear infinite' }} /> Processing</>
+                              ) : 'Approve'}
                             </button>
                             <button 
                               className="btn-refresh" 

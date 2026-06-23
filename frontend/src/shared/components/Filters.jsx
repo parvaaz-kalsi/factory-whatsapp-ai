@@ -67,8 +67,9 @@ export default function Filters({
             value={selectedStatus || ''}
             onChange={(e) => setSelectedStatus && setSelectedStatus(e.target.value)}
           >
-            <option value="">All Demands</option>
-            <option value="approved">Yet to be Received</option>
+            <option value="">All</option>
+            <option value="approved">Approved</option>
+            <option value="ordered">Ordered</option>
             <option value="received">Received</option>
           </select>
         </div>
@@ -118,7 +119,7 @@ export default function Filters({
           )}
           {activeTab === 'approved' && selectedStatus && (
             <span className="filter-tag">
-              Status: {selectedStatus === 'approved' ? 'Yet to be Received' : 'Received'}
+              Status: {selectedStatus === 'approved' ? 'Approved' : selectedStatus === 'ordered' ? 'Ordered' : 'Received'}
               <span className="filter-tag-close" onClick={() => setSelectedStatus && setSelectedStatus('')}>✕</span>
             </span>
           )}

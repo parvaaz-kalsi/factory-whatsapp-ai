@@ -350,9 +350,10 @@ export default function App() {
     }
   }, [pendingRequests.length, currentPendingIndex]);
 
-  // Handle Approve Action
+  const [approvingId, setApprovingId] = useState(null);
   const handleApprove = async (id, approvedData) => {
     try {
+      setApprovingId(id);
       setRefreshing(true);
       const response = await fetch(`/api/pending/${id}/approve`, {
         method: 'POST',
@@ -368,6 +369,7 @@ export default function App() {
     } catch (err) {
       console.error('Error approving request:', err);
     } finally {
+      setApprovingId(null);
       setRefreshing(false);
     }
   };
@@ -397,6 +399,7 @@ export default function App() {
   };
 
   // Handle Forward Action (Reviewer)
+  const [forwardingId, setForwardingId] = useState(null);
   const handleForward = async (id, forwardData) => {
     const qtyVal = parseFloat(String(forwardData.qty || '').replace(/[^0-9.]/g, ''));
     const priceVal = parseFloat(String(forwardData.price || '').replace(/[^0-9.]/g, ''));
@@ -407,6 +410,7 @@ export default function App() {
     }
     
     try {
+      setForwardingId(id);
       setRefreshing(true);
       const response = await fetch(`/api/pending/${id}/forward`, {
         method: 'POST',
@@ -421,13 +425,16 @@ export default function App() {
     } catch (err) {
       console.error('Error forwarding request:', err);
     } finally {
+      setForwardingId(null);
       setRefreshing(false);
     }
   };
 
   // Handle Receive Action
+  const [receivingId, setReceivingId] = useState(null);
   const handleReceive = async (id) => {
     try {
+      setReceivingId(id);
       setRefreshing(true);
       const response = await fetch(`/api/pending/${id}/receive`, {
         method: 'POST'
@@ -440,6 +447,31 @@ export default function App() {
     } catch (err) {
       console.error('Error receiving request:', err);
     } finally {
+      setReceivingId(null);
+      setRefreshing(false);
+    }
+  };
+
+  // Handle Toggle Ordered Action
+  const [orderingId, setOrderingId] = useState(null);
+  const handleToggleOrdered = async (id, currentOrderedStatus) => {
+    try {
+      setOrderingId(id);
+      setRefreshing(true);
+      const response = await fetch(`/api/pending/${id}/order`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ isOrdered: !currentOrderedStatus })
+      });
+      if (response.ok) {
+        await fetchData();
+      } else {
+        alert('Failed to update ordered status.');
+      }
+    } catch (err) {
+      console.error('Error updating ordered status:', err);
+    } finally {
+      setOrderingId(null);
       setRefreshing(false);
     }
   };
@@ -576,7 +608,7 @@ export default function App() {
     return activeTab === 'pending' 
       ? pendingRequests.filter(r => {
           if (currentUserRole === 'reviewer') {
-            return !r.status || r.status === 'pending_review';
+            return !r.status || r.status === 'pending_review' || r.status === 'draft';
           }
           // Approver (manager) only sees requests forwarded by the Editor
           return r.status === 'reviewed';
@@ -618,7 +650,13 @@ export default function App() {
     }
     let matchesStatus = true;
     if (activeTab === 'approved' && selectedStatus !== '') {
-      matchesStatus = item.status === selectedStatus;
+      if (selectedStatus === 'ordered') {
+        matchesStatus = item.isOrdered === true;
+      } else if (selectedStatus === 'approved') {
+        matchesStatus = item.status === 'approved' && item.isOrdered !== true;
+      } else {
+        matchesStatus = item.status === selectedStatus;
+      }
     }
 
     return matchesSearch && matchesMachine && matchesVendor && matchesDate && matchesStatus;
@@ -778,22 +816,7 @@ export default function App() {
 
   const handleCustomDemandSkuChange = (e) => {
     const val = e.target.value;
-    const matched = inventoryItems.find(i => i.sku === val);
-    if (matched) {
-      setCustomDemandData(prev => ({
-        ...prev,
-        sku: val,
-        partName: matched.partName || prev.partName,
-        regNo: matched.regNo || '',
-        size: matched.size !== '—' ? (matched.size || prev.size) : prev.size,
-        material: matched.material !== '—' ? (matched.material || prev.material) : prev.material,
-        machine: matched.machine !== 'General Compatibility' ? (matched.machine || prev.machine) : prev.machine,
-        vendor: matched.vendor !== '—' ? (matched.vendor || prev.vendor) : prev.vendor,
-        price: matched.price || prev.price
-      }));
-    } else {
-      setCustomDemandData(prev => ({ ...prev, sku: val }));
-    }
+    setCustomDemandData(prev => ({ ...prev, sku: val }));
   };
 
   const handleCustomDemandRegNoChange = (e) => {
@@ -816,16 +839,25 @@ export default function App() {
     }
   };
 
-  const submitCustomDemand = async () => {
-    if (!customDemandData.partName || !customDemandData.qty || !customDemandData.price) {
-      alert("Part Name, Quantity, and Rate are mandatory fields.");
-      return;
+  const submitCustomDemand = async (isDraft = false) => {
+    if (isDraft) {
+      if (!customDemandData.partName) {
+        alert("Part Name is required even for drafts.");
+        return;
+      }
+    } else {
+      if (!customDemandData.partName || !customDemandData.qty || !customDemandData.price) {
+        alert("Part Name, Quantity, and Rate are mandatory fields to forward to Approver.");
+        return;
+      }
     }
+
     try {
       setRefreshing(true);
       const payload = {
         ...customDemandData,
-        editorName: currentUser ? currentUser.username : 'Editor'
+        editorName: currentUser ? currentUser.username : 'Editor',
+        status: isDraft ? 'draft' : 'reviewed'
       };
       const response = await fetch('/api/pending/custom', {
         method: 'POST',
@@ -838,7 +870,7 @@ export default function App() {
         });
         setShowCustomDemandModal(false);
         await fetchData();
-        alert("Custom demand successfully forwarded to the Approver!");
+        alert(isDraft ? "Draft successfully saved!" : "Custom demand successfully forwarded to the Approver!");
       } else {
         alert("Failed to submit custom demand.");
       }
@@ -863,7 +895,7 @@ export default function App() {
   const handlePartNameChange = (e) => setEditFormData({...editFormData, partName: e.target.value});
   const handleSkuChange = (e) => setEditFormData({...editFormData, sku: e.target.value});
 
-  const dashboardProps = { loading, voiceNotes, exportStartDate, setExportStartDate, exportEndDate, setExportEndDate, exportToExcel, exportToPDF, printDemandList, customConfirm, availableGroups, handleToggleGroupActive,  activeTab, kpiData, filteredRequests, viewMode, currentPendingIndex, setCurrentPendingIndex, handleApprove, handleReject, handleForward, rejectingId, setRejectingId, rejectReason, setRejectReason, currentUserRole, inventoryItems, selectedInventoryMachine, setSelectedInventoryMachine, uniqueInventoryMachines, inventoryLoading, handleReceive, editingRowId, setEditingRowId, editFormData, setEditFormData, handleSaveInlineEdit, inventoryEditingId, setInventoryEditingId, inventoryEditFormData, setInventoryEditFormData, handleSaveInventoryEdit, showInventoryEditModal, setShowInventoryEditModal, handlePartNameChange, handleSkuChange, searchQuery, setSearchQuery, selectedMachine, setSelectedMachine, selectedVendor, setSelectedVendor, selectedStatus, setSelectedStatus, uniqueMachines, uniqueVendors, whatsappStatus, whatsappGroups, setWhatsappGroups, fetchWhatsappStatus, fetchWhatsappGroups, showCustomDemandModal, setShowCustomDemandModal, customDemandData, setCustomDemandData, submitCustomDemand, globalModal, setGlobalModal, handleClearFilters, filteredInventory, hasNoActiveGroups, setActiveTab, pendingRequests, apiLimitCount, apiLimitMax, setCurrentUserRole, setViewMode, fetchData, refreshing, setRefreshing, globalUniquePartNames, globalUniqueMaterials, globalUniqueMachines, globalUniqueVendors, globalUniqueSKUs, globalUniqueRegNos, globalUniqueSizes, globalUniqueUnits, handleCustomDemandPartNameChange, handleCustomDemandSkuChange, handleCustomDemandRegNoChange };
+  const dashboardProps = { approvingId, forwardingId, receivingId, orderingId, handleToggleOrdered, loading, voiceNotes, exportStartDate, setExportStartDate, exportEndDate, setExportEndDate, exportToExcel, exportToPDF, printDemandList, customConfirm, availableGroups, handleToggleGroupActive,  activeTab, kpiData, filteredRequests, viewMode, currentPendingIndex, setCurrentPendingIndex, handleApprove, handleReject, handleForward, rejectingId, setRejectingId, rejectReason, setRejectReason, currentUserRole, inventoryItems, selectedInventoryMachine, setSelectedInventoryMachine, uniqueInventoryMachines, inventoryLoading, handleReceive, editingRowId, setEditingRowId, editFormData, setEditFormData, handleSaveInlineEdit, inventoryEditingId, setInventoryEditingId, inventoryEditFormData, setInventoryEditFormData, handleSaveInventoryEdit, showInventoryEditModal, setShowInventoryEditModal, handlePartNameChange, handleSkuChange, searchQuery, setSearchQuery, selectedMachine, setSelectedMachine, selectedVendor, setSelectedVendor, selectedStatus, setSelectedStatus, uniqueMachines, uniqueVendors, whatsappStatus, whatsappGroups, setWhatsappGroups, fetchWhatsappStatus, fetchWhatsappGroups, showCustomDemandModal, setShowCustomDemandModal, customDemandData, setCustomDemandData, submitCustomDemand, globalModal, setGlobalModal, handleClearFilters, filteredInventory, hasNoActiveGroups, setActiveTab, pendingRequests, apiLimitCount, apiLimitMax, setCurrentUserRole, setViewMode, fetchData, refreshing, setRefreshing, globalUniquePartNames, globalUniqueMaterials, globalUniqueMachines, globalUniqueVendors, globalUniqueSKUs, globalUniqueRegNos, globalUniqueSizes, globalUniqueUnits, handleCustomDemandPartNameChange, handleCustomDemandSkuChange, handleCustomDemandRegNoChange };
   return (
     <>
       {currentUserRole === 'observer' && <ManagerDashboard {...dashboardProps} />}

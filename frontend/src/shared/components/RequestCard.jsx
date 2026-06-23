@@ -49,7 +49,9 @@ const CardHeaderIllustration = ({ category }) => {
   );
 };
 
-export default function RequestCard({ item, voiceNotes = [] }) {
+import { FiCheck } from 'react-icons/fi';
+
+export default function RequestCard({ item, voiceNotes = [], currentUserRole, handleToggleOrdered }) {
   const category = getCategory(item.partName);
   
   // Minimalist Custom HTML5 Audio Player logic
@@ -198,9 +200,30 @@ export default function RequestCard({ item, voiceNotes = [] }) {
             {item.vendor || 'Awaiting Allocation'}
           </div>
           
-          <span className={`status-badge ${statusClass}`}>
-            {statusText}
-          </span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            {currentUserRole === 'reviewer' && (item.status === 'approved' || !item.status) && (
+              <button 
+                className="btn-refresh" 
+                style={{ 
+                  padding: '0.3rem 0.6rem', 
+                  fontSize: '0.75rem', 
+                  backgroundColor: item.isOrdered ? 'var(--bg-secondary)' : 'var(--accent-blue-bg)', 
+                  borderColor: item.isOrdered ? 'var(--border-medium)' : '#bfdbfe', 
+                  color: item.isOrdered ? 'var(--text-secondary)' : 'var(--accent-blue-text)', 
+                  fontWeight: 600,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.25rem'
+                }}
+                onClick={() => handleToggleOrdered(item.id, item.isOrdered)}
+              >
+                {item.isOrdered ? <><FiCheck size={12} /> Ordered</> : 'Mark as Ordered'}
+              </button>
+            )}
+            <span className={`status-badge ${statusClass}`}>
+              {statusText}
+            </span>
+          </div>
         </div>
       </div>
     </div>
