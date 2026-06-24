@@ -94,24 +94,7 @@ export default function DemandTable(props) {
   const handleRegNoChange = (e) => {
     const val = e.target.value;
     console.log('[Console Log - List View Edit] Selected Reg No.:', val);
-    const matched = inventoryItems.find(i => i.regNo === val);
-    if (matched) {
-      setEditFormData(prev => ({
-        ...prev,
-        regNo: val,
-        partName: matched.partName || prev.partName,
-        sku: matched.sku || '',
-        size: matched.size !== '—' ? (matched.size || prev.size) : prev.size,
-        material: matched.material !== '—' ? (matched.material || prev.material) : prev.material,
-        category: matched.category !== '—' ? (matched.category || prev.category) : prev.category,
-        machine: matched.machine !== 'General Compatibility' ? (matched.machine || prev.machine) : prev.machine,
-        vendor: matched.vendor !== '—' ? (matched.vendor || prev.vendor) : prev.vendor,
-        price: matched.price || prev.price,
-        unit: matched.unit || prev.unit
-      }));
-    } else {
-      setEditFormData(prev => ({ ...prev, regNo: val }));
-    }
+    setEditFormData(prev => ({ ...prev, regNo: val }));
   };
 
   return (

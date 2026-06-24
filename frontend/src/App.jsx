@@ -821,22 +821,7 @@ export default function App() {
 
   const handleCustomDemandRegNoChange = (e) => {
     const val = e.target.value;
-    const matched = inventoryItems.find(i => i.regNo === val);
-    if (matched) {
-      setCustomDemandData(prev => ({
-        ...prev,
-        regNo: val,
-        partName: matched.partName || prev.partName,
-        sku: matched.sku || '',
-        size: matched.size !== '—' ? (matched.size || prev.size) : prev.size,
-        material: matched.material !== '—' ? (matched.material || prev.material) : prev.material,
-        machine: matched.machine !== 'General Compatibility' ? (matched.machine || prev.machine) : prev.machine,
-        vendor: matched.vendor !== '—' ? (matched.vendor || prev.vendor) : prev.vendor,
-        price: matched.price || prev.price
-      }));
-    } else {
-      setCustomDemandData(prev => ({ ...prev, regNo: val }));
-    }
+    setCustomDemandData(prev => ({ ...prev, regNo: val }));
   };
 
   const submitCustomDemand = async (isDraft = false) => {
