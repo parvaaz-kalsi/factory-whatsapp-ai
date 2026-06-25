@@ -249,7 +249,7 @@ export default function App() {
 
   useEffect(() => {
     const backendUrl = import.meta.env.VITE_BACKEND_URL || (window.location.hostname === 'localhost' ? 'http://localhost:5000' : window.location.origin);
-    const socket = io(backendUrl);
+    const socket = io(backendUrl, { transports: ['websocket'] });
 
     socket.on('dashboard_update', () => {
       console.log('[Socket.IO] Dashboard update event received. Refreshing data...');
@@ -362,7 +362,7 @@ export default function App() {
       });
       if (response.ok) {
         // Refresh local listings
-        await fetchData();
+
       } else {
         alert('Failed to approve request.');
       }
@@ -386,7 +386,7 @@ export default function App() {
         method: 'POST'
       });
       if (response.ok) {
-        await fetchData();
+
       } else {
         alert('Failed to reject request.');
       }
@@ -418,7 +418,7 @@ export default function App() {
         body: JSON.stringify(forwardData)
       });
       if (response.ok) {
-        await fetchData();
+
       } else {
         alert('Failed to forward request.');
       }
@@ -440,7 +440,7 @@ export default function App() {
         method: 'POST'
       });
       if (response.ok) {
-        await fetchData();
+
       } else {
         alert('Failed to mark request as received.');
       }
@@ -464,7 +464,7 @@ export default function App() {
         body: JSON.stringify({ isOrdered: !currentOrderedStatus })
       });
       if (response.ok) {
-        await fetchData();
+
       } else {
         alert('Failed to update ordered status.');
       }
@@ -554,7 +554,7 @@ export default function App() {
       });
       if (response.ok) {
         setEditingRowId(null);
-        await fetchData();
+
       } else {
         alert('Failed to save edits to database.');
       }
@@ -576,7 +576,7 @@ export default function App() {
       if (response.ok) {
         setInventoryEditingId(null);
         setShowInventoryEditModal(false);
-        await fetchData();
+
       } else {
         alert('Failed to save inventory edits to database.');
       }
@@ -854,7 +854,7 @@ export default function App() {
           partName: '', sku: '', regNo: '', qty: '', unit: '', size: '', material: '', machine: '', vendor: '', price: ''
         });
         setShowCustomDemandModal(false);
-        await fetchData();
+
         alert(isDraft ? "Draft successfully saved!" : "Custom demand successfully forwarded to the Approver!");
       } else {
         alert("Failed to submit custom demand.");

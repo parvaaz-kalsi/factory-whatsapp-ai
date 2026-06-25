@@ -71,10 +71,46 @@ exports.getApprovedRequests = async (req, res) => {
 // --------------------------------------------------
 exports.getPending = async (req, res) => {
     try {
-        const result = await pool.query("SELECT * FROM pending_requests WHERE status IS NULL OR status IN ('pending_review', 'reviewed', 'approved') ORDER BY demand_timestamp DESC");
+        const [result, inventoryResult] = await Promise.all([
+            pool.query("SELECT * FROM pending_requests WHERE status IS NULL OR status IN ('pending_review', 'reviewed', 'approved') ORDER BY demand_timestamp DESC"),
+            pool.query("SELECT * FROM inventory")
+        ]);
 
-        const requests = await Promise.all(result.rows.map(async (row) => {
-            const match = await findInventoryMatch(row.part_name, row.sku);
+        const inventory = inventoryResult.rows;
+
+        // Helper for in-memory inventory matching
+        const findInventoryMatchMem = (partName, sku) => {
+            if (sku && sku.trim() !== '') {
+                const skuMatch = inventory.find(i => i.sku === sku.trim());
+                if (skuMatch) return skuMatch;
+            }
+            if (partName && partName.trim() !== '') {
+                const trimmed = partName.trim().toLowerCase();
+                
+                // 1. Exact match
+                let match = inventory.find(i => (i.part_name || '').toLowerCase() === trimmed);
+                if (match) return match;
+
+                // 2. Partial/fuzzy match
+                match = inventory.find(i => 
+                    (i.part_name || '').toLowerCase().includes(trimmed) || 
+                    (i.product_description || '').toLowerCase().includes(trimmed)
+                );
+                if (match) return match;
+
+                // 3. Match on first word
+                const words = trimmed.split(/\s+/).filter(w => w.length > 2);
+                if (words.length > 0) {
+                    const firstWord = words[0];
+                    match = inventory.find(i => (i.part_name || '').toLowerCase().includes(firstWord));
+                    if (match) return match;
+                }
+            }
+            return null;
+        };
+
+        const requests = result.rows.map((row) => {
+            const match = findInventoryMatchMem(row.part_name, row.sku);
 
             let availableStock = '0';
             let skuValue = row.sku || '';
@@ -130,7 +166,7 @@ exports.getPending = async (req, res) => {
                 editedBy: row.edited_by || '',
                 approvedBy: row.approved_by || ''
             };
-        }));
+        });
 
         res.json(requests);
     } catch (err) {
