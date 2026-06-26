@@ -38,10 +38,9 @@ app.get('/health', async (req, res) => {
     };
 
     try {
-        const dbCheck = await prisma.$queryRaw`SELECT NOW()`;
-        if (dbCheck && dbCheck.length > 0) {
-            healthStatus.database = 'healthy';
-        }
+        // We do NOT query the database here.
+        // A periodic query on the health endpoint prevents serverless databases (like Neon) from auto-suspending.
+        healthStatus.database = 'unverified (skipping ping to allow auto-suspend)';
     } catch (dbErr) {
         console.error('[Health Check] Database check failed:', dbErr.message);
         healthStatus.status = 'DOWN';

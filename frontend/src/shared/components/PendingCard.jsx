@@ -59,6 +59,7 @@ export default function PendingCard({ item, voiceNotes = [], currentUserRole, on
   
   // Edit State
   const [isEditing, setIsEditing] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
   const [formData, setFormData] = useState({
     partName: item.partName || '',
     sku: item.sku || '',
@@ -204,6 +205,7 @@ export default function PendingCard({ item, voiceNotes = [], currentUserRole, on
   };
 
   const handleSaveEdit = async () => {
+    setIsSaving(true);
     try {
       console.log('[Console Log - PendingCard] Saving edits payload:', formData);
       const response = await fetch(`/api/pending/${item.id}/edit`, {
@@ -223,6 +225,8 @@ export default function PendingCard({ item, voiceNotes = [], currentUserRole, on
       }
     } catch (err) {
       console.error('Error saving edits:', err);
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -314,7 +318,13 @@ export default function PendingCard({ item, voiceNotes = [], currentUserRole, on
         </span>
       </div>
 
-      <div className="demand-card-body">
+      <div className="demand-card-body" style={{ position: 'relative' }}>
+        {isSaving && (
+          <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(255, 255, 255, 0.7)', zIndex: 10, display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', borderRadius: '0 0 12px 12px', backdropFilter: 'blur(2px)' }}>
+            <div className="spinner" style={{ marginBottom: '0.5rem', width: '28px', height: '28px' }}></div>
+            <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-secondary)' }}>Saving changes...</span>
+          </div>
+        )}
         {isEditing ? (
           /* EDIT MODE: Minimalist Searchable Autocomplete Form with datalist assistance */
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', marginBottom: '1rem' }}>
@@ -401,7 +411,7 @@ export default function PendingCard({ item, voiceNotes = [], currentUserRole, on
                   className="card-input"
                   style={{ width: '100%', padding: '0.4rem 0.75rem', marginTop: '0.2rem' }}
                   value={formData.qty}
-                  onChange={(e) => setFormData({ ...formData, qty: e.target.value.replace(/[^\d.]/g, '') })}
+                  onChange={(e) => setFormData(prev => ({ ...prev, qty: e.target.value.replace(/[^\d.]/g, '') }))}
                 />
               </div>
               <div>
@@ -414,8 +424,8 @@ export default function PendingCard({ item, voiceNotes = [], currentUserRole, on
                   className="card-input"
                   style={{ width: '100%', padding: '0.4rem 0.75rem', marginTop: '0.2rem' }}
                   value={formData.unit || ''}
-                  onChange={(e) => setFormData({ ...formData, unit: e.target.value })}
-                  onBlur={(e) => setFormData({ ...formData, unit: standardizeUnit(e.target.value) })}
+                  onChange={(e) => setFormData(prev => ({ ...prev, unit: e.target.value }))}
+                  onBlur={(e) => setFormData(prev => ({ ...prev, unit: standardizeUnit(e.target.value) }))}
                 />
                 <datalist id={`unit-list-${item.id}`}>
                   {uniqueUnits.map(u => <option key={u} value={u} />)}
@@ -519,11 +529,11 @@ export default function PendingCard({ item, voiceNotes = [], currentUserRole, on
             <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem' }}>
               <button 
                 className="btn-refresh" 
-                disabled={receivingId === item.id}
-                style={{ flexGrow: 1, padding: '0.4rem', fontSize: '0.8rem', justifyContent: 'center', opacity: receivingId === item.id ? 0.7 : 1 }} 
+                disabled={receivingId === item.id || isSaving}
+                style={{ flexGrow: 1, padding: '0.4rem', fontSize: '0.8rem', justifyContent: 'center', opacity: (receivingId === item.id || isSaving) ? 0.7 : 1 }} 
                 onClick={handleSaveEdit}
               >
-                {receivingId === item.id ? (
+                {receivingId === item.id || isSaving ? (
                   <><FiRefreshCw size={14} style={{ animation: 'spin 1s linear infinite', marginRight: '0.35rem' }} /> Processing...</>
                 ) : activeTab === 'receiving' ? 'Confirm & Mark as Received' : 'Save'}
               </button>

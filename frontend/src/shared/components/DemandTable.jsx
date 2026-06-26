@@ -228,7 +228,7 @@ export default function DemandTable(props) {
                     <input 
                       type="text"
                       value={editFormData.qty}
-                      onChange={(e) => setEditFormData({ ...editFormData, qty: e.target.value.replace(/[^\d.]/g, '') })}
+                      onChange={(e) => setEditFormData(prev => ({ ...prev, qty: e.target.value.replace(/[^\d.]/g, '') }))}
                       placeholder="Qty"
                       className="filter-select"
                       style={{ width: '60px', padding: '0.35rem 0.6rem', fontSize: '0.85rem' }}
@@ -245,8 +245,8 @@ export default function DemandTable(props) {
                       type="text"
                       list="inventory-units-list"
                       value={editFormData.unit || ''}
-                      onChange={(e) => setEditFormData({ ...editFormData, unit: e.target.value })}
-                      onBlur={(e) => setEditFormData({ ...editFormData, unit: standardizeUnit(e.target.value) })}
+                      onChange={(e) => setEditFormData(prev => ({ ...prev, unit: e.target.value }))}
+                      onBlur={(e) => setEditFormData(prev => ({ ...prev, unit: standardizeUnit(e.target.value) }))}
                       placeholder="Unit"
                       className="filter-select"
                       style={{ width: '70px', padding: '0.35rem 0.6rem', fontSize: '0.85rem' }}
@@ -262,7 +262,7 @@ export default function DemandTable(props) {
                     <input 
                       type="text"
                       value={editFormData.size}
-                      onChange={(e) => setEditFormData({ ...editFormData, size: e.target.value })}
+                      onChange={(e) => setEditFormData(prev => ({ ...prev, size: e.target.value }))}
                       placeholder="Size specs"
                       className="filter-select"
                       style={{ width: '130px', padding: '0.35rem 0.6rem', fontSize: '0.85rem' }}

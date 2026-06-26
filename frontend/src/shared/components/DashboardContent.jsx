@@ -332,11 +332,7 @@ export default function DashboardContent(props) { // Force HMR reload
                           
                           <td style={{ padding: '1rem 1.25rem', color: 'var(--text-secondary)' }}>
                             {isEditingRow ? (
-                              <input type="text" list="inventory-units-list" className="filter-select" style={{ width: '60px', padding: '0.35rem' }} value={inventoryEditFormData.unit || ''} onChange={(e) => setInventoryEditFormData({...inventoryEditFormData, unit: e.target.value})} onBlur={(e) => {
-                                import('../../utils/unitStandardizer').then(({ standardizeUnit }) => {
-                                  setInventoryEditFormData({...inventoryEditFormData, unit: standardizeUnit(e.target.value)});
-                                });
-                              }} />
+                              <input type="text" list="inventory-units-list" className="filter-select" style={{ width: '60px', padding: '0.35rem' }} value={inventoryEditFormData.unit || ''} onChange={(e) => setInventoryEditFormData(prev => ({...prev, unit: e.target.value}))} onBlur={(e) => setInventoryEditFormData(prev => ({...prev, unit: standardizeUnit(e.target.value)}))} />
                             ) : item.unit}
                           </td>
                           
@@ -964,7 +960,7 @@ export default function DashboardContent(props) { // Force HMR reload
                 </div>
                 <div>
                   <label style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-secondary)', display: 'block', marginBottom: '0.25rem' }}>Unit</label>
-                  <input type="text" list="custom-demand-units" className="filter-select" style={{ width: '100%' }} value={customDemandData.unit || ''} onChange={e => setCustomDemandData({...customDemandData, unit: e.target.value})} onBlur={e => setCustomDemandData({...customDemandData, unit: standardizeUnit(e.target.value)})} placeholder="e.g. pcs" />
+                  <input type="text" list="custom-demand-units" className="filter-select" style={{ width: '100%' }} value={customDemandData.unit || ''} onChange={e => setCustomDemandData(prev => ({...prev, unit: e.target.value}))} onBlur={e => setCustomDemandData(prev => ({...prev, unit: standardizeUnit(e.target.value)}))} placeholder="e.g. pcs" />
                   <datalist id="custom-demand-units">
                      {globalUniqueUnits && globalUniqueUnits.map(u => <option key={u} value={u} />)}
                   </datalist>
@@ -1052,11 +1048,7 @@ export default function DashboardContent(props) { // Force HMR reload
                 </div>
                 <div>
                   <label style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-secondary)', display: 'block', marginBottom: '0.25rem' }}>Unit</label>
-                  <input type="text" list="inventory-units-list" className="filter-select" style={{ width: '100%' }} value={inventoryEditFormData.unit || ''} onChange={(e) => setInventoryEditFormData({...inventoryEditFormData, unit: e.target.value})} onBlur={(e) => {
-                    import('../../utils/unitStandardizer').then(({ standardizeUnit }) => {
-                      setInventoryEditFormData({...inventoryEditFormData, unit: standardizeUnit(e.target.value)});
-                    });
-                  }} />
+                  <input type="text" list="inventory-units-list" className="filter-select" style={{ width: '100%' }} value={inventoryEditFormData.unit || ''} onChange={(e) => setInventoryEditFormData(prev => ({...prev, unit: e.target.value}))} onBlur={(e) => setInventoryEditFormData(prev => ({...prev, unit: standardizeUnit(e.target.value)}))} />
                 </div>
                 <div>
                   <label style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-secondary)', display: 'block', marginBottom: '0.25rem' }}>Size Specs</label>

@@ -91,6 +91,29 @@ async function safeInitialize() {
 }
 
 // --------------------------------------------------
+// In-Memory Active Groups Cache (Eliminates polling)
+// --------------------------------------------------
+let activeGroupsLoaded = false;
+const activeGroupsCacheSet = new Set();
+
+async function loadActiveGroups() {
+    try {
+        const groups = await prisma.whatsapp_groups.findMany({ where: { active: true } });
+        activeGroupsCacheSet.clear();
+        groups.forEach(g => activeGroupsCacheSet.add(g.group_id));
+        activeGroupsLoaded = true;
+        console.log('[WhatsApp] Active groups cache loaded into memory.');
+    } catch (err) {
+        console.error('[WhatsApp] Failed to load active groups:', err);
+    }
+}
+
+function updateActiveGroup(groupId, isActive) {
+    if (isActive) activeGroupsCacheSet.add(groupId);
+    else activeGroupsCacheSet.delete(groupId);
+}
+
+// --------------------------------------------------
 // Baileys Event Handlers
 // --------------------------------------------------
 function setupBaileysEvents(sock) {
@@ -163,8 +186,6 @@ function setupBaileysEvents(sock) {
     });
 
     const processedMessageIds = new Set();
-    const activeGroupsCache = new Map();
-    const CACHE_TTL_MS = 60000; // 1 minute cache for active groups
 
     sock.ev.on('messages.upsert', async (m) => {
         try {
@@ -189,20 +210,12 @@ function setupBaileysEvents(sock) {
                     }
                 }
 
-                // Query database to see if this group is active (with memory caching)
-                const now = Date.now();
-                let isActive = false;
-                if (activeGroupsCache.has(jid) && (now - activeGroupsCache.get(jid).timestamp < CACHE_TTL_MS)) {
-                    isActive = activeGroupsCache.get(jid).active;
-                } else {
-                    const activeCheck = await prisma.whatsapp_groups.findFirst({
-                        where: { group_id: jid, active: true }
-                    });
-                    isActive = !!activeCheck;
-                    activeGroupsCache.set(jid, { active: isActive, timestamp: now });
+                // Check database to see if this group is active (using in-memory set without TTL polling)
+                if (!activeGroupsLoaded) {
+                    await loadActiveGroups();
                 }
-
-                if (!isActive) continue;
+                
+                if (!activeGroupsCacheSet.has(jid)) continue;
 
                 let senderName = msg.pushName || msg.key.participant?.split('@')[0] || 'WhatsApp User';
                 senderName = senderName.toString().trim();
@@ -325,5 +338,6 @@ module.exports = {
     getClient,
     logout,
     reconnect,
-    ensureWhatsappGroupsTable
+    ensureWhatsappGroupsTable,
+    updateActiveGroup
 };

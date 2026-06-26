@@ -121,6 +121,9 @@ exports.setGroupActive = async (req, res) => {
             }
         });
 
+        // Update the in-memory cache immediately to prevent polling
+        whatsappService.updateActiveGroup(groupId, !!active);
+
         if (global.io) global.io.emit('dashboard_update');
         res.json({ success: true, group: result });
     } catch (err) {
