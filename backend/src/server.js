@@ -36,10 +36,10 @@ io.on('connection', (socket) => {
     socket.on('disconnect', () => console.log('[Socket.IO] Client disconnected:', socket.id));
 });
 
-// Periodic broadcast of API limit decay
+// Periodic broadcast of API limit decay (every 10s is sufficient for cosmetic UI)
 setInterval(() => {
     decayTimestamps();
-}, 2000);
+}, 10000);
 
 // --------------------------------------------------
 // Start Server

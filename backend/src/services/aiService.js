@@ -1,6 +1,6 @@
 const fs = require('fs');
 const genAI = require('../config/gemini');
-const pool = require('../config/db');
+const prisma = require('../config/db');
 const standardizeUnit = require('../utils/unitStandardizer');
 
 // Gemini API Rate Limit Tracker (15 RPM Free Tier limit)
@@ -25,10 +25,23 @@ function decayTimestamps() {
 
 async function fetchInventoryContext() {
     try {
-        const res = await pool.query('SELECT part_name, sku, material, detail1, detail2, available_qty, unit, price, vendor FROM inventory ORDER BY part_name ASC');
+        const rows = await prisma.inventory.findMany({
+            select: {
+                part_name: true,
+                sku: true,
+                material: true,
+                detail1: true,
+                detail2: true,
+                available_qty: true,
+                unit: true,
+                price: true,
+                vendor: true
+            },
+            orderBy: { part_name: 'asc' }
+        });
         
         let context = "Master Inventory (Part Name | SKU | Material | Size Details | Stock Qty | Unit | Price | Preferred Vendor):\n";
-        res.rows.forEach(row => {
+        rows.forEach(row => {
             const size = [row.detail1, row.detail2].filter(Boolean).join(" / ");
             context += `- "${row.part_name}" | SKU: ${row.sku} | Mat: ${row.material || 'N/A'} | Size: ${size || 'N/A'} | Stock: ${row.available_qty} ${row.unit || 'Pcs.'} | Price: $${row.price || '0.00'} | Vendor: ${row.vendor || 'N/A'}\n`;
         });
@@ -50,13 +63,6 @@ async function generateWithRetry(prompt, isAudio = false, audioBase64 = null) {
 
         for (let attempt = 0; attempt <= maxRetries; attempt++) {
             try {
-                // Track this request for RPM limiting
-                geminiRequestTimestamps.push(Date.now());
-                if (global.io) {
-                    lastBroadcastLimit = geminiRequestTimestamps.length;
-                    global.io.emit('api_limit_update', { count: lastBroadcastLimit, limit: GEMINI_RPM_LIMIT });
-                }
-
                 let result;
                 if (isAudio) {
                     result = await model.generateContent([
@@ -74,6 +80,12 @@ async function generateWithRetry(prompt, isAudio = false, audioBase64 = null) {
 
                 const text = result.response.text();
                 if (text) {
+                    // Track successful request for RPM limiting
+                    geminiRequestTimestamps.push(Date.now());
+                    if (global.io) {
+                        lastBroadcastLimit = geminiRequestTimestamps.length;
+                        global.io.emit('api_limit_update', { count: lastBroadcastLimit, limit: GEMINI_RPM_LIMIT });
+                    }
                     return text; // Success!
                 }
             } catch (err) {
@@ -260,40 +272,26 @@ async function processAudio(filename) {
 async function savePendingRequest(item, senderName = 'WhatsApp User') {
     try {
         const id = Date.now() + '-' + Math.floor(Math.random() * 1000);
-        const receivedAt = new Date().toISOString();
+        const receivedAt = new Date();
 
-        // Query text and values are generated below
+        await prisma.pending_requests.create({
+            data: {
+                id,
+                part_name: item["Part Name"] || item.partName || '',
+                qty: String(item["Qty Required"] || item.qty || '').replace(/[^\d.]/g, ''),
+                size: item["Size"] || item.size || '',
+                material: item["Material"] || item.material || '',
+                machine: item["For Machine"] || item.machine || '',
+                vendor: item["Vendor"] || item.vendor || '',
+                requested_by: senderName,
+                demand_timestamp: new Date(),
+                received_at: receivedAt,
+                rate: item["Price"] || item.price || '',
+                status: 'pending_review',
+                unit: standardizeUnit(item["Unit"] || item.unit || '')
+            }
+        });
 
-        const values = [
-            id,
-            item["Part Name"] || item.partName || '',
-            String(item["Qty Required"] || item.qty || '').replace(/[^\d.]/g, ''),
-            item["Size"] || item.size || '',
-            item["Material"] || item.material || '',
-            item["For Machine"] || item.machine || '',
-            item["Vendor"] || item.vendor || '',
-            senderName,
-            receivedAt,
-            item["Price"] || item.price || '',
-            'pending_review'
-        ];
-
-        // Ensure we add the unit field as the 12th value, assuming unit column exists
-        // We'll update the query if needed, wait, the query in savePendingRequest needs to include unit!
-        const queryText = `
-            INSERT INTO pending_requests (
-                id, part_name, qty, size, material, machine, vendor, requested_by, 
-                demand_timestamp, received_at, rate, status, unit
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW(), $9, $10, $11, $12)
-        `;
-        
-        values.push(standardizeUnit(item["Unit"] || item.unit || ''));
-
-        console.log('--- SQL DIRECT BOT INSERTION ---');
-        console.log('Parameters:', JSON.stringify(values, null, 2));
-        console.log('---------------------------------');
-
-        await pool.query(queryText, values);
         console.log(`Saved pending request successfully inside NeonDB: ID=${id}`);
         if (global.io) global.io.emit('dashboard_update');
         return { success: true, id };

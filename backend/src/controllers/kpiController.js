@@ -1,17 +1,30 @@
-const pool = require('../config/db');
+const prisma = require('../config/db');
 
 // GET /api/approver-kpis
 exports.getKpis = async (req, res) => {
     try {
-        const queryText = `
-            SELECT 
-                COUNT(CASE WHEN status = 'pending_review' OR status IS NULL THEN 1 END)::int as new_worker_demands,
-                COUNT(CASE WHEN status = 'reviewed' THEN 1 END)::int as pending_approval,
-                COUNT(CASE WHEN status = 'approved' THEN 1 END)::int as approved_not_received
-            FROM pending_requests
-        `;
-        const result = await pool.query(queryText);
-        res.json(result.rows[0]);
+        const new_worker_demands = await prisma.pending_requests.count({
+            where: {
+                OR: [
+                    { status: 'pending_review' },
+                    { status: null }
+                ]
+            }
+        });
+
+        const pending_approval = await prisma.pending_requests.count({
+            where: { status: 'reviewed' }
+        });
+
+        const approved_not_received = await prisma.pending_requests.count({
+            where: { status: 'approved' }
+        });
+
+        res.json({
+            new_worker_demands,
+            pending_approval,
+            approved_not_received
+        });
     } catch (err) {
         console.error('Error fetching Approver KPIs:', err);
         res.status(500).json({ error: 'Failed to fetch Approver KPIs from database' });

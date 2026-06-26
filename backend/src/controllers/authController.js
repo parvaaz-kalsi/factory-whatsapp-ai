@@ -2,6 +2,16 @@ const fs = require('fs');
 const path = require('path');
 const bcrypt = require('bcrypt');
 
+// Cache users in memory at startup
+let cachedUsers = null;
+function getUsers() {
+    if (!cachedUsers) {
+        const usersData = fs.readFileSync(path.join(process.cwd(), 'users.json'), 'utf8');
+        cachedUsers = JSON.parse(usersData);
+    }
+    return cachedUsers;
+}
+
 exports.login = async (req, res) => {
     try {
         const { username, password } = req.body;
@@ -9,8 +19,7 @@ exports.login = async (req, res) => {
             return res.status(400).json({ error: 'Username and password are required' });
         }
 
-        const usersData = fs.readFileSync(path.join(process.cwd(), 'users.json'), 'utf8');
-        const users = JSON.parse(usersData);
+        const users = getUsers();
 
         const user = users.find(u => u.username.toLowerCase() === username.toLowerCase());
         if (!user) {

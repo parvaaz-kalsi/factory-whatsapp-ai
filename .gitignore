@@ -14,6 +14,8 @@ build/
 .env.development.local
 .env.test.local
 .env.production.local
+backend/.env
+frontend/.env
 
 # Credentials & Secrets
 credentials.json
@@ -23,11 +25,24 @@ backend/credentials.json
 *creds*.json
 *credentials*.json
 
-# WhatsApp session data (credentials and massive caches)
+# WhatsApp session data (Baileys auth keys)
+.auth_info_baileys/
+backend/.auth_info_baileys/
 .wwebjs_auth/
 .wwebjs_cache/
 backend/.wwebjs_auth/
 backend/.wwebjs_cache/
+
+# Audio files (downloaded voice notes)
+audio_files/
+backend/audio_files/
+
+# Data files (generated at runtime)
+backend/pending_requests.json
+*.xlsx
+
+# Scratch / debug scripts
+backend/scratch/
 
 # Logs
 logs

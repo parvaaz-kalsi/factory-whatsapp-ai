@@ -1,6 +1,6 @@
 const { google } = require('googleapis');
 
-const SPREADSHEET_ID = '14QSTB1DJeaY44Ec2WTA12znOW6L5AsLALhLLEedwVpI';
+const SPREADSHEET_ID = process.env.GOOGLE_SPREADSHEET_ID || '14QSTB1DJeaY44Ec2WTA12znOW6L5AsLALhLLEedwVpI';
 const RANGE = 'Sheet1!A:I';
 
 async function getSheetsClient() {

@@ -2,7 +2,7 @@ const express = require('express');
 const cors = require('cors');
 const path = require('path');
 const fs = require('fs');
-const pool = require('./config/db');
+const prisma = require('./config/db');
 
 // Import Routes
 const authRoutes = require('./routes/authRoutes');
@@ -19,8 +19,10 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-// Serve local voice note audio files as static resources
-app.use('/audio', express.static(path.join(process.cwd())));
+// Serve local voice note audio files from a dedicated directory
+const audioDir = path.join(process.cwd(), 'audio_files');
+if (!fs.existsSync(audioDir)) fs.mkdirSync(audioDir, { recursive: true });
+app.use('/audio', express.static(audioDir));
 
 // --------------------------------------------------
 // Health Check
@@ -36,8 +38,8 @@ app.get('/health', async (req, res) => {
     };
 
     try {
-        const dbCheck = await pool.query('SELECT NOW()');
-        if (dbCheck && dbCheck.rows.length > 0) {
+        const dbCheck = await prisma.$queryRaw`SELECT NOW()`;
+        if (dbCheck && dbCheck.length > 0) {
             healthStatus.database = 'healthy';
         }
     } catch (dbErr) {
@@ -57,14 +59,15 @@ app.get('/api/health', (req, res) => {
 // Voice notes listing
 app.get('/api/voice-notes', (req, res) => {
     try {
-        const rootDir = process.cwd();
-        const files = fs.readdirSync(rootDir);
+        const voiceDir = path.join(process.cwd(), 'audio_files');
+        if (!fs.existsSync(voiceDir)) return res.json([]);
+        const files = fs.readdirSync(voiceDir);
         const voiceNotes = files
             .filter(file => file.startsWith('voice_') && file.endsWith('.ogg'))
             .map(file => {
                 const timestampStr = file.replace('voice_', '').replace('.ogg', '');
                 const timestamp = parseInt(timestampStr, 10);
-                const stats = fs.statSync(path.join(rootDir, file));
+                const stats = fs.statSync(path.join(voiceDir, file));
                 return {
                     filename: file,
                     url: `/audio/${file}`,

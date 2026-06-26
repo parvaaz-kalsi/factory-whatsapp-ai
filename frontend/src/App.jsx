@@ -251,9 +251,14 @@ export default function App() {
     const backendUrl = import.meta.env.VITE_BACKEND_URL || (window.location.hostname === 'localhost' ? 'http://localhost:5000' : window.location.origin);
     const socket = io(backendUrl, { transports: ['websocket'] });
 
+    // Debounce dashboard updates — if multiple events fire within 2s, only refresh once
+    let debounceTimer = null;
     socket.on('dashboard_update', () => {
-      console.log('[Socket.IO] Dashboard update event received. Refreshing data...');
-      fetchData();
+      if (debounceTimer) clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(() => {
+        console.log('[Socket.IO] Dashboard update event received. Refreshing data...');
+        fetchData();
+      }, 2000);
     });
 
     socket.on('api_limit_update', (data) => {
@@ -262,6 +267,7 @@ export default function App() {
     });
 
     return () => {
+      if (debounceTimer) clearTimeout(debounceTimer);
       socket.disconnect();
     };
   }, []);
@@ -328,9 +334,7 @@ export default function App() {
     }
   };
 
-  useEffect(() => {
-    fetchData();
-  }, []);
+  // Initial fetch is handled by the activeTab useEffect above — no separate mount fetch needed
 
   // Handle active tab synchronization based on user role
   useEffect(() => {
@@ -550,7 +554,7 @@ export default function App() {
       const response = await fetch(`/api/pending/${id}/edit`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(editFormData)
+        body: JSON.stringify({ ...editFormData, role: currentUser?.role })
       });
       if (response.ok) {
         setEditingRowId(null);

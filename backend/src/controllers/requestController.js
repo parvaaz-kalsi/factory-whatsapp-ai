@@ -1,68 +1,69 @@
-const pool = require('../config/db');
+const prisma = require('../config/db');
 const { getSheetRows, appendToSheet } = require('../services/googleSheetsService');
 const { processText, processAudio, savePendingRequest } = require('../services/aiService');
 const fs = require('fs');
 const path = require('path');
 
 // --------------------------------------------------
-// Helpers
-// --------------------------------------------------
-async function findInventoryMatch(partName, sku) {
-    try {
-        if (sku && sku.trim() !== '') {
-            const res = await pool.query('SELECT * FROM inventory WHERE sku = $1', [sku.trim()]);
-            if (res.rows.length > 0) return res.rows[0];
-        }
-        if (partName && partName.trim() !== '') {
-            const trimmed = partName.trim();
-            const resExact = await pool.query('SELECT * FROM inventory WHERE part_name ILIKE $1', [trimmed]);
-            if (resExact.rows.length > 0) return resExact.rows[0];
-
-            const resFuzzy1 = await pool.query('SELECT * FROM inventory WHERE part_name ILIKE $1 OR product_description ILIKE $1 LIMIT 1', [`%${trimmed}%`]);
-            if (resFuzzy1.rows.length > 0) return resFuzzy1.rows[0];
-
-            const words = trimmed.split(/\s+/).filter(w => w.length > 2);
-            if (words.length > 0) {
-                const pattern = `%${words[0]}%`;
-                const resFuzzy2 = await pool.query('SELECT * FROM inventory WHERE part_name ILIKE $1 LIMIT 1', [pattern]);
-                if (resFuzzy2.rows.length > 0) return resFuzzy2.rows[0];
-            }
-        }
-    } catch (err) {
-        console.error('Error in findInventoryMatch helper:', err);
-    }
-    return null;
-}
-
-// --------------------------------------------------
 // GET /api/requests – Approved requests from Google Sheets
 // --------------------------------------------------
 exports.getApprovedRequests = async (req, res) => {
     try {
-        const rows = await getSheetRows();
-        if (rows.length === 0) return res.json([]);
+        // Primary: Fetch received items from the database
+        const dbResult = await prisma.pending_requests.findMany({
+            where: { status: 'received' },
+            orderBy: { demand_timestamp: 'desc' }
+        });
+        
+        let requests = dbResult.map((row) => ({
+            id: row.id,
+            partName: row.part_name || '',
+            qty: row.qty || '',
+            size: row.size || '',
+            material: row.material || '',
+            machine: row.machine || '',
+            vendor: row.vendor || '',
+            requestedBy: row.requested_by || '',
+            receivedAt: row.received_at || row.demand_timestamp,
+            demandTimestamp: row.demand_timestamp || '',
+            sku: row.sku || '',
+            regNo: row.reg_no || '',
+            category: row.category || '',
+            price: row.rate || row.price || '',
+            unit: row.unit || '',
+            isOrdered: row.is_ordered || false
+        }));
 
-        const dataRows = rows.slice(1);
-        const requests = dataRows.map((row, index) => ({
-            id: index + 1,
-            partName: row[0] || '',
-            qty: row[1] || '',
-            size: row[2] || '',
-            material: row[3] || '',
-            machine: row[4] || '',
-            vendor: row[5] || '',
-            requestedBy: row[6] || '',
-            receivedAt: row[7] || '',
-            demandTimestamp: row[8] || ''
-        })).filter(item => item.partName || item.qty || item.machine);
+        // Fallback: If DB is empty, try fetching from Google Sheets (legacy data support)
+        if (requests.length === 0) {
+            try {
+                const rows = await getSheetRows();
+                if (rows && rows.length > 1) {
+                    requests = rows.slice(1).map((row, index) => ({
+                        id: 'sheet-' + index,
+                        partName: row[0] || '',
+                        qty: row[1] || '',
+                        size: row[2] || '',
+                        material: row[3] || '',
+                        machine: row[4] || '',
+                        vendor: row[5] || '',
+                        requestedBy: row[6] || '',
+                        receivedAt: row[7] || '',
+                        demandTimestamp: row[8] || ''
+                    })).filter(item => item.partName || item.qty || item.machine);
+                }
+            } catch (sheetErr) {
+                console.warn('Google Sheets fetch skipped or failed.');
+            }
+        }
 
         console.log('--- API RESPONSE SENT TO APPROVED SECTION ---');
-        console.log('Total Approved Requests:', requests.length);
+        console.log('Total Approved/Received Requests:', requests.length);
         console.log('---------------------------------------------');
         res.json(requests);
     } catch (err) {
-        console.error('Error fetching sheet rows:', err);
-        res.status(500).json({ error: 'Failed to fetch data from Google Sheets' });
+        console.error('Error fetching approved requests:', err);
+        res.status(500).json({ error: 'Failed to fetch data' });
     }
 };
 
@@ -72,11 +73,19 @@ exports.getApprovedRequests = async (req, res) => {
 exports.getPending = async (req, res) => {
     try {
         const [result, inventoryResult] = await Promise.all([
-            pool.query("SELECT * FROM pending_requests WHERE status IS NULL OR status IN ('pending_review', 'reviewed', 'approved') ORDER BY demand_timestamp DESC"),
-            pool.query("SELECT * FROM inventory")
+            prisma.pending_requests.findMany({
+                where: {
+                    OR: [
+                        { status: null },
+                        { status: { in: ['pending_review', 'reviewed', 'approved', 'draft'] } }
+                    ]
+                },
+                orderBy: { demand_timestamp: 'desc' }
+            }),
+            prisma.inventory.findMany()
         ]);
 
-        const inventory = inventoryResult.rows;
+        const inventory = inventoryResult;
 
         // Helper for in-memory inventory matching
         const findInventoryMatchMem = (partName, sku) => {
@@ -109,7 +118,7 @@ exports.getPending = async (req, res) => {
             return null;
         };
 
-        const requests = result.rows.map((row) => {
+        const requests = result.map((row) => {
             const match = findInventoryMatchMem(row.part_name, row.sku);
 
             let availableStock = '0';
@@ -121,18 +130,18 @@ exports.getPending = async (req, res) => {
             let stockWarning = 'No Inventory Match';
 
             if (match) {
-                availableStock = (match.available_qty !== undefined ? match.available_qty : 0).toString();
+                availableStock = (match.available_qty !== null ? match.available_qty : 0).toString();
                 
                 // Prioritize explicit row values over the inventory match
                 skuValue = row.sku || match.sku || '';
-                priceVal = row.rate || match.price || '';
+                priceVal = row.rate || (match.price ? match.price.toString() : '');
                 regNoValue = row.reg_no || match.reg_no || '';
                 categoryValue = row.category || match.category || '';
                 
                 suggestedMatch = match.part_name || '';
 
                 const reqQty = parseInt((row.qty || '').replace(/[^0-9]/g, ''), 10);
-                const stock = match.available_qty !== undefined ? match.available_qty : 0;
+                const stock = match.available_qty !== null ? match.available_qty : 0;
 
                 if (isNaN(reqQty) || reqQty === 0) {
                     stockWarning = stock > 0 ? 'Stock Available' : 'Insufficient Stock';
@@ -184,24 +193,28 @@ exports.createPending = async (req, res) => {
         if (!item) return res.status(400).json({ error: 'Empty payload' });
 
         const id = Date.now() + '-' + Math.floor(Math.random() * 1000);
-        const receivedAt = new Date().toISOString();
+        const receivedAt = new Date();
 
-        const queryText = `
-            INSERT INTO pending_requests (
-                id, part_name, qty, size, material, machine, vendor, requested_by, 
-                demand_timestamp, received_at, rate, status
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW(), $9, $10, $11)
-        `;
-
-        const values = [id, item.partName || '', item.qty || '', item.size || '', item.material || '',
-            item.machine || '', item.vendor || '', item.requestedBy || 'WhatsApp User',
-            receivedAt, item.price || '', 'pending_review'];
-
-        await pool.query(queryText, values);
+        await prisma.pending_requests.create({
+            data: {
+                id,
+                part_name: item.partName || '',
+                qty: item.qty || '',
+                size: item.size || '',
+                material: item.material || '',
+                machine: item.machine || '',
+                vendor: item.vendor || '',
+                requested_by: item.requestedBy || 'WhatsApp User',
+                demand_timestamp: new Date(),
+                received_at: receivedAt,
+                rate: item.price || '',
+                status: 'pending_review'
+            }
+        });
 
         const newItem = { id, partName: item.partName || '', qty: item.qty || '', size: item.size || '',
             material: item.material || '', machine: item.machine || '', vendor: item.vendor || '',
-            requestedBy: item.requestedBy || 'WhatsApp User', receivedAt,
+            requestedBy: item.requestedBy || 'WhatsApp User', receivedAt: receivedAt.toISOString(),
             sku: item.sku || '', category: item.category || '', price: item.price || '',
             availableStock: item.availableStock || '', stockWarning: item.stockWarning || '',
             suggestedMatch: item.suggestedMatch || '' };
@@ -223,48 +236,53 @@ exports.approve = async (req, res) => {
         const { id } = req.params;
         const approvedData = req.body;
 
-        const checkResult = await pool.query('SELECT * FROM pending_requests WHERE id = $1', [id]);
-        if (checkResult.rows.length === 0) return res.status(404).json({ error: 'Pending request not found' });
+        const dbRow = await prisma.pending_requests.findUnique({ where: { id } });
+        if (!dbRow) return res.status(404).json({ error: 'Pending request not found' });
 
-        const dbRow = checkResult.rows[0];
-
-        const updateQueryText = `
-            UPDATE pending_requests 
-            SET status = 'approved', approved_by = 'Manager', approved_at = NOW(),
-                part_name = $1, qty = $2, size = $3, material = $4, machine = $5, vendor = $6, rate = $7
-            WHERE id = $8
-            RETURNING *
-        `;
-        const updateValues = [
-            approvedData.partName || dbRow.part_name || '', approvedData.qty || dbRow.qty || '',
-            approvedData.size || dbRow.size || '', approvedData.material || dbRow.material || '',
-            approvedData.machine || dbRow.machine || '', approvedData.vendor || dbRow.vendor || '',
-            approvedData.price || approvedData.rate || dbRow.rate || '', id
-        ];
-        await pool.query(updateQueryText, updateValues);
+        await prisma.pending_requests.update({
+            where: { id },
+            data: {
+                status: 'approved',
+                approved_by: approvedData.approvedBy || 'Manager',
+                approved_at: new Date(),
+                part_name: approvedData.partName || dbRow.part_name || '',
+                qty: approvedData.qty || dbRow.qty || '',
+                size: approvedData.size || dbRow.size || '',
+                material: approvedData.material || dbRow.material || '',
+                machine: approvedData.machine || dbRow.machine || '',
+                vendor: approvedData.vendor || dbRow.vendor || '',
+                rate: approvedData.price || approvedData.rate || dbRow.rate || ''
+            }
+        });
 
         // Check/Create inventory item with stock = 0 if it doesn't exist
         const partNameToCheck = approvedData.partName || dbRow.part_name || '';
-        const itemCheck = await pool.query('SELECT * FROM inventory WHERE part_name ILIKE $1', [partNameToCheck.trim()]);
-        if (itemCheck.rows.length === 0) {
+        const searchName = partNameToCheck.trim();
+        const itemCheck = await prisma.inventory.findFirst({
+            where: { part_name: { equals: searchName, mode: 'insensitive' } }
+        });
+
+        if (!itemCheck) {
             const cleanName = partNameToCheck.trim().substring(0, 5).toUpperCase().replace(/[^A-Z0-9]/g, '');
             const generatedSku = 'GEN-' + cleanName + '-' + Math.floor(Math.random() * 10000);
+            const parsedPrice = parseFloat(approvedData.price || approvedData.rate || dbRow.rate || '0') || 0.00;
 
-            await pool.query(`
-                INSERT INTO inventory (
-                    part_name, part_group, material, detail1, detail2, sku, reg_no, vendor, available_qty, price, rate, category
-                ) VALUES ($1, $2, $3, $4, '', $5, $6, $7, 0, $8, $8, $9)
-            `, [
-                partNameToCheck,
-                approvedData.machine || dbRow.machine || 'General Compatibility',
-                approvedData.material || dbRow.material || '',
-                approvedData.size || dbRow.size || '',
-                approvedData.sku || generatedSku,
-                approvedData.regNo || dbRow.reg_no || '',
-                approvedData.vendor || dbRow.vendor || '',
-                parseFloat(approvedData.price || approvedData.rate || dbRow.rate || '0') || 0.00,
-                dbRow.category || ''
-            ]);
+            await prisma.inventory.create({
+                data: {
+                    part_name: partNameToCheck,
+                    part_group: approvedData.machine || dbRow.machine || 'General Compatibility',
+                    material: approvedData.material || dbRow.material || '',
+                    detail1: approvedData.size || dbRow.size || '',
+                    detail2: '',
+                    sku: approvedData.sku || generatedSku,
+                    reg_no: approvedData.regNo || dbRow.reg_no || '',
+                    vendor: approvedData.vendor || dbRow.vendor || '',
+                    available_qty: 0,
+                    price: parsedPrice,
+                    rate: parsedPrice,
+                    category: dbRow.category || ''
+                }
+            });
         }
 
         console.log('Approved demand processed:', partNameToCheck);
@@ -283,22 +301,30 @@ exports.receive = async (req, res) => {
     try {
         const { id } = req.params;
 
-        const checkResult = await pool.query('SELECT * FROM pending_requests WHERE id = $1', [id]);
-        if (checkResult.rows.length === 0) return res.status(404).json({ error: 'Request not found' });
+        const dbRow = await prisma.pending_requests.findUnique({ where: { id } });
+        if (!dbRow) return res.status(404).json({ error: 'Request not found' });
 
-        const dbRow = checkResult.rows[0];
-
-        await pool.query(`UPDATE pending_requests SET status = 'received', received_at = NOW() WHERE id = $1`, [id]);
+        await prisma.pending_requests.update({
+            where: { id },
+            data: { status: 'received' }
+        });
 
         // Increase inventory stock quantity
         const partNameToCheck = dbRow.part_name || '';
-        const itemCheck = await pool.query('SELECT * FROM inventory WHERE part_name ILIKE $1', [partNameToCheck.trim()]);
+        const searchName = partNameToCheck.trim();
+        const itemCheck = await prisma.inventory.findFirst({
+            where: { part_name: { equals: searchName, mode: 'insensitive' } }
+        });
+        
         const receivedQtyNum = parseInt((dbRow.qty || '').replace(/[^0-9]/g, ''), 10) || 0;
 
-        if (itemCheck.rows.length > 0) {
-            const currentQty = itemCheck.rows[0].available_qty || 0;
+        if (itemCheck) {
+            const currentQty = itemCheck.available_qty || 0;
             const newQty = currentQty + receivedQtyNum;
-            await pool.query('UPDATE inventory SET available_qty = $1 WHERE id = $2', [newQty, itemCheck.rows[0].id]);
+            await prisma.inventory.update({
+                where: { id: itemCheck.id },
+                data: { available_qty: newQty }
+            });
             console.log(`[Inventory Stock Update] Increased stock of "${partNameToCheck}" from ${currentQty} to ${newQty}`);
         }
 
@@ -331,24 +357,28 @@ exports.edit = async (req, res) => {
 
         const editorRoleName = editData.role === 'manager' ? 'Manager' : 'Reviewer';
 
-        const queryText = `
-            UPDATE pending_requests 
-            SET part_name = $1, qty = $2, size = $3, material = $4, machine = $5, vendor = $6, rate = $7, 
-                sku = $8, reg_no = $9, edited_by = $10, edited_at = NOW()
-            WHERE id = $11
-            RETURNING *
-        `;
-        const values = [editData.partName || '', editData.qty || '', editData.size || '',
-            editData.material || '', editData.machine || '', editData.vendor || '',
-            editData.price || editData.rate || '', editData.sku || '', editData.regNo || '', editorRoleName, id];
+        const result = await prisma.pending_requests.update({
+            where: { id },
+            data: {
+                part_name: editData.partName || '',
+                qty: editData.qty || '',
+                size: editData.size || '',
+                material: editData.material || '',
+                machine: editData.machine || '',
+                vendor: editData.vendor || '',
+                rate: editData.price || editData.rate || '',
+                sku: editData.sku || '',
+                reg_no: editData.regNo || '',
+                edited_by: editorRoleName,
+                edited_at: new Date()
+            }
+        });
 
-        const result = await pool.query(queryText, values);
-        if (result.rows.length === 0) return res.status(404).json({ error: 'Pending request not found' });
-
-        console.log(`Edited request by ${editorRoleName}:`, result.rows[0].part_name);
+        console.log(`Edited request by ${editorRoleName}:`, result.part_name);
         if (global.io) global.io.emit('dashboard_update');
-        res.json({ success: true, item: result.rows[0] });
+        res.json({ success: true, item: result });
     } catch (err) {
+        if (err.code === 'P2025') return res.status(404).json({ error: 'Pending request not found' });
         console.error('Error editing request in DB:', err);
         res.status(500).json({ error: 'Failed to edit pending request in database' });
     }
@@ -363,24 +393,28 @@ exports.forward = async (req, res) => {
         const editData = req.body;
         if (!editData) return res.status(400).json({ error: 'Empty payload' });
 
-        const queryText = `
-            UPDATE pending_requests 
-            SET part_name = $1, qty = $2, size = $3, material = $4, machine = $5, vendor = $6, rate = $7,
-                status = 'reviewed', edited_by = 'Reviewer', edited_at = NOW(), forwarded_at = NOW()
-            WHERE id = $8
-            RETURNING *
-        `;
-        const values = [editData.partName || '', editData.qty || '', editData.size || '',
-            editData.material || '', editData.machine || '', editData.vendor || '',
-            editData.price || editData.rate || '', id];
+        const result = await prisma.pending_requests.update({
+            where: { id },
+            data: {
+                part_name: editData.partName || '',
+                qty: editData.qty || '',
+                size: editData.size || '',
+                material: editData.material || '',
+                machine: editData.machine || '',
+                vendor: editData.vendor || '',
+                rate: editData.price || editData.rate || '',
+                status: 'reviewed',
+                edited_by: 'Reviewer',
+                edited_at: new Date(),
+                forwarded_at: new Date()
+            }
+        });
 
-        const result = await pool.query(queryText, values);
-        if (result.rows.length === 0) return res.status(404).json({ error: 'Pending request not found' });
-
-        console.log('Forwarded request to Manager stage:', result.rows[0].part_name);
+        console.log('Forwarded request to Manager stage:', result.part_name);
         if (global.io) global.io.emit('dashboard_update');
-        res.json({ success: true, item: result.rows[0] });
+        res.json({ success: true, item: result });
     } catch (err) {
+        if (err.code === 'P2025') return res.status(404).json({ error: 'Pending request not found' });
         console.error('Error forwarding request in DB:', err);
         res.status(500).json({ error: 'Failed to forward pending request in database' });
     }
@@ -392,12 +426,15 @@ exports.forward = async (req, res) => {
 exports.reject = async (req, res) => {
     try {
         const { id } = req.params;
-        const result = await pool.query("UPDATE pending_requests SET status = 'rejected' WHERE id = $1 RETURNING part_name", [id]);
-        if (result.rows.length === 0) return res.status(404).json({ error: 'Pending request not found' });
+        const result = await prisma.pending_requests.update({
+            where: { id },
+            data: { status: 'rejected' }
+        });
 
-        console.log('Rejected:', result.rows[0].part_name);
+        console.log('Rejected:', result.part_name);
         res.json({ success: true });
     } catch (err) {
+        if (err.code === 'P2025') return res.status(404).json({ error: 'Pending request not found' });
         console.error('Error rejecting request:', err);
         res.status(500).json({ error: 'Failed to reject pending request' });
     }
@@ -434,5 +471,71 @@ exports.simulateMessage = async (req, res) => {
     } catch (err) {
         console.error('Error during message simulation API:', err);
         res.status(500).json({ error: 'Failed to simulate message processing', details: err.message });
+    }
+};
+
+// --------------------------------------------------
+// POST /api/pending/custom – Editor creates a custom demand
+// --------------------------------------------------
+exports.createCustomDemand = async (req, res) => {
+    try {
+        const item = req.body;
+        if (!item || !item.partName) return res.status(400).json({ error: 'Part Name is required' });
+
+        const id = Date.now() + '-' + Math.floor(Math.random() * 1000);
+        const receivedAt = new Date();
+        const status = item.status || 'pending_review';
+
+        await prisma.pending_requests.create({
+            data: {
+                id,
+                part_name: item.partName || '',
+                qty: item.qty || '',
+                size: item.size || '',
+                material: item.material || '',
+                machine: item.machine || '',
+                vendor: item.vendor || '',
+                requested_by: item.editorName || 'Editor',
+                demand_timestamp: new Date(),
+                received_at: receivedAt,
+                rate: item.price || '',
+                status,
+                unit: item.unit || '',
+                sku: item.sku || '',
+                reg_no: item.regNo || '',
+                edited_by: item.editorName || 'Editor',
+                edited_at: new Date()
+            }
+        });
+
+        console.log(`Custom demand created by ${item.editorName || 'Editor'}: "${item.partName}" (status: ${status})`);
+        if (global.io) global.io.emit('dashboard_update');
+        res.json({ success: true, id });
+    } catch (err) {
+        console.error('Error creating custom demand:', err);
+        res.status(500).json({ error: 'Failed to create custom demand' });
+    }
+};
+
+// --------------------------------------------------
+// POST /api/pending/:id/order – Toggle ordered status
+// --------------------------------------------------
+exports.toggleOrdered = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { isOrdered } = req.body;
+
+        const result = await prisma.pending_requests.update({
+            where: { id },
+            data: { is_ordered: !!isOrdered }
+        });
+
+        console.log(`Order status toggled for "${result.part_name}": ${result.is_ordered}`);
+        if (global.io) global.io.emit('dashboard_update');
+        res.json({ success: true, isOrdered: result.is_ordered });
+    } catch (err) {
+        if (err.code === 'P2025') return res.status(404).json({ error: 'Pending request not found' });
+        console.error('Error toggling ordered status:', err);
+        res.status(500).json({ error: 'Failed to update ordered status' });
     }
 };

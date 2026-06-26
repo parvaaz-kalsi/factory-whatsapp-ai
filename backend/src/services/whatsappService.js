@@ -4,7 +4,7 @@ const { makeWASocket, useMultiFileAuthState, DisconnectReason, fetchLatestBailey
 const pino = require('pino');
 const qrTerminal = require('qrcode-terminal');
 const QRCode = require('qrcode');
-const pool = require('../config/db');
+const prisma = require('../config/db');
 const { processText, processAudio, savePendingRequest } = require('./aiService');
 
 // --------------------------------------------------
@@ -163,6 +163,8 @@ function setupBaileysEvents(sock) {
     });
 
     const processedMessageIds = new Set();
+    const activeGroupsCache = new Map();
+    const CACHE_TTL_MS = 60000; // 1 minute cache for active groups
 
     sock.ev.on('messages.upsert', async (m) => {
         try {
@@ -177,17 +179,30 @@ function setupBaileysEvents(sock) {
                     if (processedMessageIds.has(msg.key.id)) continue;
                     processedMessageIds.add(msg.key.id);
                     if (processedMessageIds.size > 1000) {
+                        // Batch-clear oldest 200 entries to avoid per-message overhead
                         const iterator = processedMessageIds.values();
-                        processedMessageIds.delete(iterator.next().value);
+                        for (let i = 0; i < 200; i++) iterator.next();
+                        const remaining = [];
+                        for (const val of iterator) remaining.push(val);
+                        processedMessageIds.clear();
+                        remaining.forEach(v => processedMessageIds.add(v));
                     }
                 }
 
-                // Query database to see if this group is active
-                const activeCheck = await pool.query(
-                    'SELECT 1 FROM whatsapp_groups WHERE group_id = $1 AND active = TRUE',
-                    [jid]
-                );
-                if (activeCheck.rows.length === 0) continue;
+                // Query database to see if this group is active (with memory caching)
+                const now = Date.now();
+                let isActive = false;
+                if (activeGroupsCache.has(jid) && (now - activeGroupsCache.get(jid).timestamp < CACHE_TTL_MS)) {
+                    isActive = activeGroupsCache.get(jid).active;
+                } else {
+                    const activeCheck = await prisma.whatsapp_groups.findFirst({
+                        where: { group_id: jid, active: true }
+                    });
+                    isActive = !!activeCheck;
+                    activeGroupsCache.set(jid, { active: isActive, timestamp: now });
+                }
+
+                if (!isActive) continue;
 
                 let senderName = msg.pushName || msg.key.participant?.split('@')[0] || 'WhatsApp User';
                 senderName = senderName.toString().trim();
@@ -211,7 +226,9 @@ function setupBaileysEvents(sock) {
                 } else if (messageType === 'audioMessage' || messageType === 'ptvMessage') {
                     console.log("Voice note received");
                     const buffer = await downloadMediaMessage(msg, 'buffer', {}, { logger: pino({ level: 'silent' }) });
-                    const filename = `voice_${Date.now()}.ogg`;
+                    const audioDir = path.join(process.cwd(), 'audio_files');
+                    if (!require('fs').existsSync(audioDir)) require('fs').mkdirSync(audioDir, { recursive: true });
+                    const filename = path.join(audioDir, `voice_${Date.now()}.ogg`);
                     fs.writeFileSync(filename, buffer);
                     console.log("Saved audio file:", filename);
 
@@ -296,20 +313,10 @@ async function reconnect() {
 }
 
 async function ensureWhatsappGroupsTable() {
-    try {
-        await pool.query(`
-            CREATE TABLE IF NOT EXISTS whatsapp_groups (
-                id SERIAL PRIMARY KEY,
-                group_id VARCHAR(100) UNIQUE,
-                group_name VARCHAR(255),
-                active BOOLEAN DEFAULT FALSE,
-                created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-            );
-        `);
-        console.log('Database table "whatsapp_groups" verified/created successfully.');
-    } catch (err) {
-        console.error('Error verifying/creating "whatsapp_groups" table:', err);
-    }
+    // This is managed by Prisma migrations / schema sync now.
+    // We can keep it as a no-op or a basic try/catch if absolutely necessary,
+    // but the table is already defined in prisma/schema.prisma.
+    console.log('ensureWhatsappGroupsTable: Handled by Prisma.');
 }
 
 module.exports = {

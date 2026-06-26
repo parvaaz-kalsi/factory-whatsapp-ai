@@ -1,4 +1,4 @@
-const pool = require('../config/db');
+const prisma = require('../config/db');
 const QRCode = require('qrcode');
 const whatsappService = require('../services/whatsappService');
 
@@ -30,8 +30,7 @@ exports.getGroups = async (req, res) => {
         let dbGroups = [];
         const dbMap = new Map();
         try {
-            const dbResult = await pool.query('SELECT * FROM whatsapp_groups');
-            dbGroups = dbResult.rows;
+            dbGroups = await prisma.whatsapp_groups.findMany();
             dbGroups.forEach(g => {
                 dbMap.set(g.group_id, { name: g.group_name, active: g.active });
             });
@@ -109,16 +108,21 @@ exports.setGroupActive = async (req, res) => {
         const { groupId, active, name } = req.body;
         if (!groupId) return res.status(400).json({ error: 'groupId is required' });
 
-        const queryText = `
-            INSERT INTO whatsapp_groups (group_id, group_name, active)
-            VALUES ($1, $2, $3)
-            ON CONFLICT (group_id) 
-            DO UPDATE SET active = EXCLUDED.active, group_name = EXCLUDED.group_name
-            RETURNING *
-        `;
-        const result = await pool.query(queryText, [groupId, name || 'Unnamed Group', !!active]);
+        const result = await prisma.whatsapp_groups.upsert({
+            where: { group_id: groupId },
+            update: {
+                active: !!active,
+                group_name: name || 'Unnamed Group'
+            },
+            create: {
+                group_id: groupId,
+                group_name: name || 'Unnamed Group',
+                active: !!active
+            }
+        });
+
         if (global.io) global.io.emit('dashboard_update');
-        res.json({ success: true, group: result.rows[0] });
+        res.json({ success: true, group: result });
     } catch (err) {
         console.error('Error in POST /api/whatsapp/groups/active:', err);
         res.status(500).json({ error: 'Failed to update WhatsApp group active state' });
