@@ -11,7 +11,7 @@ exports.getApprovedRequests = async (req, res) => {
     try {
         // Primary: Fetch received items from the database
         const dbResult = await prisma.pending_requests.findMany({
-            where: { status: 'received' },
+            where: { status: { in: ['approved', 'received'] } },
             orderBy: { demand_timestamp: 'desc' }
         });
         
@@ -31,6 +31,7 @@ exports.getApprovedRequests = async (req, res) => {
             category: row.category || '',
             price: row.rate || row.price || '',
             unit: row.unit || '',
+            status: row.status || 'received',
             isOrdered: row.is_ordered || false
         }));
 
@@ -88,16 +89,20 @@ exports.getPending = async (req, res) => {
         const inventory = inventoryResult;
 
         // Helper for in-memory inventory matching
-        const findInventoryMatchMem = (partName, sku) => {
+        const findInventoryMatchMem = (partName, sku, size) => {
             if (sku && sku.trim() !== '') {
                 const skuMatch = inventory.find(i => i.sku === sku.trim());
                 if (skuMatch) return skuMatch;
             }
             if (partName && partName.trim() !== '') {
                 const trimmed = partName.trim().toLowerCase();
+                const trimmedSize = (size || '').trim().toLowerCase();
                 
-                // 1. Exact match
-                let match = inventory.find(i => (i.part_name || '').toLowerCase() === trimmed);
+                // 1. Exact match (name and size)
+                let match = inventory.find(i => 
+                    (i.part_name || '').toLowerCase() === trimmed && 
+                    (i.detail1 || '').toLowerCase() === trimmedSize
+                );
                 if (match) return match;
 
                 // 2. Partial/fuzzy match
@@ -119,7 +124,7 @@ exports.getPending = async (req, res) => {
         };
 
         const requests = result.map((row) => {
-            const match = findInventoryMatchMem(row.part_name, row.sku);
+            const match = findInventoryMatchMem(row.part_name, row.sku, row.size);
 
             let availableStock = '0';
             let skuValue = row.sku || '';
@@ -164,6 +169,7 @@ exports.getPending = async (req, res) => {
                 receivedAt: row.received_at || row.demand_timestamp,
                 sku: skuValue,
                 regNo: regNoValue,
+                unit: row.unit || '',
                 category: categoryValue,
                 price: priceVal,
                 availableStock,
@@ -200,8 +206,10 @@ exports.createPending = async (req, res) => {
                 id,
                 part_name: item.partName || '',
                 qty: item.qty || '',
+                unit: item.unit || '',
                 size: item.size || '',
                 material: item.material || '',
+                category: item.category || '',
                 machine: item.machine || '',
                 vendor: item.vendor || '',
                 requested_by: item.requestedBy || 'WhatsApp User',
@@ -212,7 +220,7 @@ exports.createPending = async (req, res) => {
             }
         });
 
-        const newItem = { id, partName: item.partName || '', qty: item.qty || '', size: item.size || '',
+        const newItem = { id, partName: item.partName || '', qty: item.qty || '', unit: item.unit || '', size: item.size || '',
             material: item.material || '', machine: item.machine || '', vendor: item.vendor || '',
             requestedBy: item.requestedBy || 'WhatsApp User', receivedAt: receivedAt.toISOString(),
             sku: item.sku || '', category: item.category || '', price: item.price || '',
@@ -247,8 +255,10 @@ exports.approve = async (req, res) => {
                 approved_at: new Date(),
                 part_name: approvedData.partName || dbRow.part_name || '',
                 qty: approvedData.qty || dbRow.qty || '',
+                unit: approvedData.unit || dbRow.unit || '',
                 size: approvedData.size || dbRow.size || '',
                 material: approvedData.material || dbRow.material || '',
+                category: approvedData.category || dbRow.category || '',
                 machine: approvedData.machine || dbRow.machine || '',
                 vendor: approvedData.vendor || dbRow.vendor || '',
                 rate: approvedData.price || approvedData.rate || dbRow.rate || ''
@@ -258,8 +268,13 @@ exports.approve = async (req, res) => {
         // Check/Create inventory item with stock = 0 if it doesn't exist
         const partNameToCheck = approvedData.partName || dbRow.part_name || '';
         const searchName = partNameToCheck.trim();
+        const sizeToCheck = approvedData.size || dbRow.size || '';
+        const searchSize = sizeToCheck.trim();
         const itemCheck = await prisma.inventory.findFirst({
-            where: { part_name: { equals: searchName, mode: 'insensitive' } }
+            where: { 
+                part_name: { equals: searchName, mode: 'insensitive' },
+                detail1: { equals: searchSize, mode: 'insensitive' }
+            }
         });
 
         if (!itemCheck) {
@@ -278,6 +293,7 @@ exports.approve = async (req, res) => {
                     reg_no: approvedData.regNo || dbRow.reg_no || '',
                     vendor: approvedData.vendor || dbRow.vendor || '',
                     available_qty: 0,
+                    unit: approvedData.unit || dbRow.unit || '',
                     price: parsedPrice,
                     rate: parsedPrice,
                     category: dbRow.category || ''
@@ -312,8 +328,13 @@ exports.receive = async (req, res) => {
         // Increase inventory stock quantity
         const partNameToCheck = dbRow.part_name || '';
         const searchName = partNameToCheck.trim();
+        const sizeToCheck = dbRow.size || '';
+        const searchSize = sizeToCheck.trim();
         const itemCheck = await prisma.inventory.findFirst({
-            where: { part_name: { equals: searchName, mode: 'insensitive' } }
+            where: { 
+                part_name: { equals: searchName, mode: 'insensitive' },
+                detail1: { equals: searchSize, mode: 'insensitive' }
+            }
         });
         
         const receivedQtyNum = parseInt((dbRow.qty || '').replace(/[^0-9]/g, ''), 10) || 0;
@@ -362,8 +383,10 @@ exports.edit = async (req, res) => {
             data: {
                 part_name: editData.partName || '',
                 qty: editData.qty || '',
+                unit: editData.unit || '',
                 size: editData.size || '',
                 material: editData.material || '',
+                category: editData.category || '',
                 machine: editData.machine || '',
                 vendor: editData.vendor || '',
                 rate: editData.price || editData.rate || '',
@@ -398,8 +421,10 @@ exports.forward = async (req, res) => {
             data: {
                 part_name: editData.partName || '',
                 qty: editData.qty || '',
+                unit: editData.unit || '',
                 size: editData.size || '',
                 material: editData.material || '',
+                category: editData.category || '',
                 machine: editData.machine || '',
                 vendor: editData.vendor || '',
                 rate: editData.price || editData.rate || '',
@@ -493,6 +518,7 @@ exports.createCustomDemand = async (req, res) => {
                 qty: item.qty || '',
                 size: item.size || '',
                 material: item.material || '',
+                category: item.category || '',
                 machine: item.machine || '',
                 vendor: item.vendor || '',
                 requested_by: item.editorName || 'Editor',

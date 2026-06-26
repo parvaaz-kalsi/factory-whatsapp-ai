@@ -7,6 +7,7 @@ exports.getKpis = async (req, res) => {
             where: {
                 OR: [
                     { status: 'pending_review' },
+                    { status: 'draft' },
                     { status: null }
                 ]
             }
