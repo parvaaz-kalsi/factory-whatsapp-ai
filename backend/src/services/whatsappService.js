@@ -140,7 +140,7 @@ function setupBaileysEvents(sock) {
                     color: { dark: '#000000', light: '#ffffff' }
                 });
                 console.log('[WhatsApp] QR data URL generated locally (instant)');
-                if (global.io) global.io.emit('dashboard_update');
+                if (global.io) global.io.emit('whatsapp_status_update');
             } catch (err) {
                 console.error('[WhatsApp] QR image generation failed:', err.message);
             }
@@ -157,7 +157,7 @@ function setupBaileysEvents(sock) {
             whatsappStatus.phone = null;
             whatsappStatus.pushname = null;
             whatsappStatus.lastStateChange = Date.now();
-            if (global.io) global.io.emit('dashboard_update');
+            if (global.io) global.io.emit('whatsapp_status_update');
 
             if (shouldReconnect) {
                 safeInitialize();
@@ -181,7 +181,7 @@ function setupBaileysEvents(sock) {
             whatsappStatus.phone = sock.user?.id?.split(':')[0] || null;
             whatsappStatus.pushname = sock.user?.name || null;
             whatsappStatus.initAttempt = 0;
-            if (global.io) global.io.emit('dashboard_update');
+            if (global.io) global.io.emit('whatsapp_status_update');
         }
     });
 

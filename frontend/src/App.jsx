@@ -261,6 +261,10 @@ export default function App() {
       }, 2000);
     });
 
+    socket.on('whatsapp_status_update', () => {
+      fetchWhatsappStatus();
+    });
+
     socket.on('api_limit_update', (data) => {
       setApiLimitCount(data.count);
       setApiLimitMax(data.limit);
