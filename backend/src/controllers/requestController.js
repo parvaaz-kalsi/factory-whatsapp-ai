@@ -186,7 +186,7 @@ exports.getPending = async (req, res) => {
         res.json(requests);
     } catch (err) {
         console.error('Error fetching pending requests from DB:', err);
-        res.status(500).json({ error: 'Failed to fetch pending requests from database', details: err.message, stack: err.stack });
+        res.status(500).json({ error: 'Failed to fetch pending requests from database' });
     }
 };
 
