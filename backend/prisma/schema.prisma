@@ -19,7 +19,7 @@ model inventory {
   detail2             String?  @db.VarChar(255)
   category            String?  @db.VarChar(255)
   reg_no              String?  @db.VarChar(255)
-  sku                 String?  @unique @db.VarChar(255)
+  sku                 String?  @db.VarChar(255)
   vendor              String?  @db.VarChar(255)
   location            String?  @db.VarChar(255)
   available_qty       Int?     @default(0)
