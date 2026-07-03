@@ -7,6 +7,7 @@ import RequestCard from './RequestCard';
 import { standardizeUnit } from '../../utils/unitStandardizer';
 import { FiRefreshCw, FiAlertTriangle, FiInfo, FiTrash2, FiClipboard, FiInbox, FiUser, FiDownload, FiPrinter } from 'react-icons/fi';
 import MultiTagInput from './MultiTagInput';
+import IssueDemandsView from './IssueDemandsView';
 
 export default function DashboardContent(props) { // Force HMR reload
   const { approvingId, forwardingId, receivingId, orderingId, loading, activeTab, kpiData, filteredRequests, viewMode, currentPendingIndex, setCurrentPendingIndex, handleApprove, handleReject, handleForward, rejectingId, setRejectingId, rejectReason, setRejectReason, currentUserRole, inventoryItems, selectedInventoryMachine, setSelectedInventoryMachine, uniqueInventoryMachines, inventoryLoading, handleReceive, handleToggleOrdered, editingRowId, setEditingRowId, editFormData, setEditFormData, handleSaveInlineEdit, inventoryEditingId, setInventoryEditingId, inventoryEditFormData, setInventoryEditFormData, handleSaveInventoryEdit, showInventoryEditModal, setShowInventoryEditModal, handlePartNameChange, handleSkuChange, searchQuery, setSearchQuery, selectedMachine, setSelectedMachine, selectedVendor, setSelectedVendor, selectedStatus, setSelectedStatus, uniqueMachines, uniqueVendors, whatsappStatus, whatsappGroups, setWhatsappGroups, fetchWhatsappStatus, fetchWhatsappGroups, showCustomDemandModal, setShowCustomDemandModal, customDemandData, setCustomDemandData, submitCustomDemand, globalModal, setGlobalModal, handleClearFilters, filteredInventory, hasNoActiveGroups, setActiveTab, pendingRequests, apiLimitCount, apiLimitMax, setCurrentUserRole, setViewMode, fetchData, refreshing, setRefreshing, globalUniquePartNames, globalUniqueMaterials, globalUniqueMachines, globalUniqueVendors, globalUniqueSKUs, globalUniqueRegNos, globalUniqueSizes, globalUniqueUnits, handleCustomDemandPartNameChange, handleCustomDemandSkuChange, handleCustomDemandRegNoChange, voiceNotes, exportStartDate, setExportStartDate, exportEndDate, setExportEndDate, exportToExcel, exportToPDF, printDemandList, customConfirm, availableGroups, handleToggleGroupActive } = props;
@@ -64,6 +65,8 @@ export default function DashboardContent(props) { // Force HMR reload
             <div className="spinner"></div>
             <p style={{ color: 'var(--text-secondary)', fontWeight: 500 }}>Syncing active listings...</p>
           </div>
+        ) : activeTab === 'issue_demands' ? (
+          <IssueDemandsView {...props} />
         ) : activeTab === 'inventory' ? (
           /* INVENTORY CATALOG VIEW */
           <div className="inventory-container" style={{ marginTop: '1rem', display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>

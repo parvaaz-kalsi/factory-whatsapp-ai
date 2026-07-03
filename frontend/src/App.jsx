@@ -18,7 +18,11 @@ import DemandTable from './shared/components/DemandTable';
 
 export default function App() {
   // Navigation / Tabs State
-  const [activeTab, setActiveTab] = useState('pending'); // 'pending' or 'approved'
+  const [activeTab, setActiveTab] = useState(() => {
+    const saved = localStorage.getItem('user');
+    const user = saved ? JSON.parse(saved) : null;
+    return (user && user.role === 'receiver') ? 'receiving' : 'pending';
+  });
 
   // Authentication State
   const [currentUser, setCurrentUser] = useState(() => {
@@ -345,6 +349,8 @@ export default function App() {
     if (currentUser) {
       if (currentUser.role === 'manager') {
         setActiveTab('pending_review');
+      } else if (currentUser.role === 'receiver') {
+        setActiveTab('receiving');
       } else {
         setActiveTab('pending');
       }

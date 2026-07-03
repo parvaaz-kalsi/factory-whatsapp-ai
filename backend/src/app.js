@@ -10,6 +10,7 @@ const requestRoutes = require('./routes/requestRoutes');
 const inventoryRoutes = require('./routes/inventoryRoutes');
 const whatsappRoutes = require('./routes/whatsappRoutes');
 const kpiRoutes = require('./routes/kpiRoutes');
+const issueRoutes = require('./routes/issueRoutes');
 
 const app = express();
 
@@ -92,6 +93,7 @@ app.use('/api', requestRoutes);
 app.use('/api', inventoryRoutes);
 app.use('/api', whatsappRoutes);
 app.use('/api', kpiRoutes);
+app.use('/api', issueRoutes);
 
 // --------------------------------------------------
 // Serve Frontend in Production

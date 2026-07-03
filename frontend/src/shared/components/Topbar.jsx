@@ -74,7 +74,7 @@ export default function Topbar({
         )}
 
         {/* Layout Switcher (Card / List Toggle) */}
-        {activeTab !== 'whatsapp_settings' && (
+        {activeTab !== 'whatsapp_settings' && activeTab !== 'issue_demands' && (
           <div style={{ 
             display: 'flex', 
             backgroundColor: '#f1f5f9', 

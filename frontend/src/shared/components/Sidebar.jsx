@@ -84,6 +84,14 @@ export default function Sidebar({
               <FiCheckSquare className="sidebar-icon" />
               Receipt History
             </button>
+            <button 
+              className={`sidebar-menu-item ${activeTab === 'issue_demands' ? 'active' : ''}`}
+              onClick={() => { setActiveTab('issue_demands'); handleClearFilters(); }}
+              style={{ width: '100%', textAlign: 'left', border: 'none', background: 'none' }}
+            >
+              <FiClipboard className="sidebar-icon" />
+              Issue Demands
+            </button>
           </>
         ) : (
           <>

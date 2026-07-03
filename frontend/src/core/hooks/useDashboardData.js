@@ -8,6 +8,7 @@ export function useDashboardData() {
   const [kpiData, setKpiData] = useState({ newWorkerDemands: 0, pendingApproval: 0, approvedNotReceived: 0 });
   const [inventoryItems, setInventoryItems] = useState([]);
   const [uniqueInventoryMachines, setUniqueInventoryMachines] = useState([]);
+  const [issuedItems, setIssuedItems] = useState([]);
   
   const [apiLimitCount, setApiLimitCount] = useState(0);
   const [apiLimitMax, setApiLimitMax] = useState(15);
@@ -21,14 +22,15 @@ export function useDashboardData() {
   const fetchData = useCallback(async () => {
     try {
       setRefreshing(true);
-      const [pendingRes, approvedRes, voiceRes, kpiRes, inventoryRes, whatsappStatusRes, whatsappGroupsRes] = await Promise.all([
+      const [pendingRes, approvedRes, voiceRes, kpiRes, inventoryRes, whatsappStatusRes, whatsappGroupsRes, issuedRes] = await Promise.all([
         fetch('/api/pending'),
         fetch('/api/requests'),
         fetch('/api/voice-notes'),
         fetch('/api/approver-kpis'),
         fetch('/api/inventory'),
         fetch('/api/whatsapp/status'),
-        fetch('/api/whatsapp/groups')
+        fetch('/api/whatsapp/groups'),
+        fetch('/api/issue')
       ]);
 
       if (pendingRes.ok) {
@@ -64,6 +66,10 @@ export function useDashboardData() {
       if (whatsappGroupsRes.ok) {
         const groups = await whatsappGroupsRes.json();
         setWhatsappGroups(groups);
+      }
+      if (issuedRes.ok) {
+        const issuedData = await issuedRes.json();
+        setIssuedItems(issuedData);
       }
     } catch (err) {
       console.error('Error fetching data:', err);
@@ -136,6 +142,8 @@ export function useDashboardData() {
     uniqueInventoryMachines,
     apiLimitCount,
     apiLimitMax,
+    issuedItems,
+    setIssuedItems,
     whatsappStatus,
     whatsappGroups,
     qrCodeData,
