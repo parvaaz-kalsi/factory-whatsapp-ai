@@ -734,7 +734,7 @@ export default function DashboardContent(props) { // Force HMR reload
             />
 
             {/* Export Toolbar */}
-            {activeTab === 'approved' && (
+            {(activeTab === 'approved' || activeTab === 'receiving') && (
               <div className="export-toolbar no-print" style={{ backgroundColor: 'var(--bg-card)', padding: '1.25rem', borderRadius: '12px', border: '1px solid var(--border-light)', boxShadow: 'var(--shadow-sm)', marginBottom: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
                 <h3 style={{ fontSize: '1rem', fontWeight: 600, color: 'var(--text-primary)', margin: 0 }}>Export Demand List</h3>
                 <div style={{ display: 'flex', gap: '1.5rem', flexWrap: 'wrap', alignItems: 'center' }}>

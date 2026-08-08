@@ -650,7 +650,7 @@ export default function App() {
       selectedVendor === '' || item.vendor === selectedVendor;
 
     let matchesDate = true;
-    if (activeTab === 'approved') {
+    if (activeTab === 'approved' || activeTab === 'receiving') {
       if (exportStartDate) {
         const start = new Date(exportStartDate);
         start.setHours(0, 0, 0, 0);
@@ -663,7 +663,7 @@ export default function App() {
       }
     }
     let matchesStatus = true;
-    if (activeTab === 'approved' && selectedStatus !== '') {
+    if ((activeTab === 'approved' || activeTab === 'receiving') && selectedStatus !== '') {
       if (selectedStatus === 'ordered') {
         matchesStatus = item.isOrdered === true;
       } else if (selectedStatus === 'approved') {

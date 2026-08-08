@@ -1,0 +1,83 @@
+# AVARZ - Supply Chain Management System
+
+## 1. Project Overview
+AVARZ is a modern, comprehensive supply chain and inventory management application designed specifically for manufacturing floors and heavy industries. It streamlines the lifecycle of part demands—from the moment a worker realizes a part is needed, through managerial approval, to receiving it into inventory, and finally issuing it to specific machines or personnel. 
+
+The core innovation is its **WhatsApp AI Integration**. Instead of using complex forms, floor workers can simply message demands to a dedicated WhatsApp number in plain English or local dialects (e.g., "We need 5 bolts for the CNC machine"). Google's Gemini AI parses these natural language messages into structured database records in real-time, matching them with the existing inventory catalog.
+
+---
+
+## 2. Technical Architecture
+- **Frontend Layer**: 
+  - React (built with Vite) for a fast, responsive Single Page Application (SPA).
+  - Uses CSS variables and modular stylesheets for a sleek, dark-mode-ready UI.
+  - Contextual dashboards that dynamically render based on the logged-in user's role.
+- **Backend Layer**: 
+  - Node.js and Express.js providing RESTful API endpoints.
+  - Prisma ORM managing a robust PostgreSQL database (Neon DB).
+- **Real-Time Communication**: 
+  - Socket.IO powers instant UI updates. When a new WhatsApp demand arrives, the backend emits events to instantly refresh the dashboards of connected managers and reviewers without page reloads.
+- **AI Processing Layer**: 
+  - Google Gemini API is utilized as the NLP engine to parse incoming WhatsApp messages, extracting properties like `part_name`, `qty`, `machine`, `size`, etc., and formatting them cleanly.
+
+---
+
+## 3. Database Schema Core Models (Prisma)
+- **`inventory`**: The central repository of all physical parts. Tracks `available_qty`, `reg_no`, `sku`, `machine`, `vendor`, and `price`.
+- **`pending_requests`**: Stores all demands. Contains a robust set of fields to handle unstructured data. Uses a `status` field (`pending_review`, `pending`, `approved`, `received`) to track the lifecycle of the request.
+- **`issued_items`**: An immutable log tracking parts that have been removed from `inventory` and issued to the floor. Records the `qty_issued`, the `machine`, and who it was `issued_to`.
+- **`whatsapp_groups`**: Manages which WhatsApp groups the bot is actively listening to for demands.
+
+---
+
+## 4. User Roles & Dashboards
+
+### A. Manager (Approver)
+- **Primary Dashboard**: "Pending Approval"
+- **Responsibilities**: Final authority on all demands. They see demands that have been processed and forwarded by Reviewers.
+- **Capabilities**: Can bulk approve or reject demands. Once approved, demands move to the Receiver's queue. Monitors top-level KPIs.
+
+### B. Reviewer (Editor)
+- **Primary Dashboard**: "New Worker Demands"
+- **Responsibilities**: Acts as the first line of defense for incoming raw demands from WhatsApp.
+- **Capabilities**: Can edit the structured data parsed by AI (fixing typos, adjusting quantities, matching vendors) and then **Forward** them to the Manager for final approval.
+
+### C. Receiver
+- **Primary Dashboard**: "Receiving Queue" & "Issue Demands"
+- **Responsibilities**: Handles physical logistics.
+- **Capabilities**: 
+  1. **Receiving**: Sees demands that the Manager has approved. When the physical parts arrive from vendors, the Receiver marks them as "Received", which permanently injects the quantities into the `inventory` database table. Can also filter, print, and export (Excel/PDF) the receiving queue.
+  2. **Issuing**: Has a dedicated "Issue Demands" view to pull items out of `inventory` and issue them to specific workers and machines.
+
+### D. Observer
+- **Responsibilities**: Read-only access to view the status of demands and current inventory levels without mutation privileges.
+
+---
+
+## 5. Detailed Core Workflows
+
+### Workflow 1: The Demand Lifecycle (Ingestion to Receipt)
+1. **Ingestion**: A floor worker sends a message to the active WhatsApp group: "Need 2 bearings for the Lathe".
+2. **AI Parsing**: The backend receives the webhook, passes the text to Gemini AI, which structures it as `{ part_name: 'bearing', qty: 2, machine: 'Lathe' }`.
+3. **Database Entry**: A new `pending_requests` record is created with `status = 'pending_review'`. Socket.IO fires an event updating the frontend instantly.
+4. **Review**: The Reviewer logs in, sees the new demand, corrects the part name to "Bearing 6204", assigns a vendor, and clicks **Forward**. The status becomes `pending`.
+5. **Approval**: The Manager logs in, reviews the cost and vendor, and clicks **Approve**. The status becomes `approved`.
+6. **Receiving**: The vendor delivers the bearings. The Receiver logs in, verifies the physical delivery against the approved demand, and clicks **Receive**. The status becomes `received`, and the `inventory` table's `available_qty` for "Bearing 6204" increments by 2.
+
+### Workflow 2: Issuing Parts from Inventory
+1. **Initiation**: A worker requests a part from the physical storage room.
+2. **Form Entry**: The Receiver navigates to the **Issue Demands** tab.
+3. **Selection**: Using a searchable `<datalist>` input, the Receiver quickly finds the exact part in the inventory.
+4. **Issuance**: The Receiver inputs the quantity, the worker's name, and the machine the part is intended for, then submits.
+5. **System Updates**: 
+   - The backend decrements the `available_qty` in the `inventory` table.
+   - A new permanent record is created in the `issued_items` table.
+6. **Reporting**: The Receiver can navigate to the **Issue History** table, filter by Date, and click **Export to PDF** or **Excel** to generate a shift report.
+
+---
+
+## 6. Recent Enhancements & Fixes
+- **Issue Demands Infrastructure**: Created a fully contained lifecycle for issuing items (API routes, Prisma schema updates, Frontend views).
+- **Searchable Inventory UI**: Replaced standard `<select>` dropdowns with dynamic `<datalist>` search fields to handle massive inventory catalogs gracefully.
+- **Reporting Engine**: Added `xlsx` and `jspdf` libraries to provide 1-click tabular exports for Approved Demands, Receiving Queue, and Issued History.
+- **Routing Robustness**: Refactored the `App.jsx` authentication lifecycle. State initializations and `useEffect` hooks now explicitly check the user role upon login/refresh to guarantee users (especially Receivers) land on their correct starting tabs, eliminating blank screens.
