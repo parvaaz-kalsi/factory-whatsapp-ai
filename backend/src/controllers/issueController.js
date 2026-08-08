@@ -2,9 +2,9 @@ const prisma = require('../config/db');
 
 exports.issuePart = async (req, res) => {
     try {
-        const { inventory_id, part_name, qty_issued, issued_to, machine } = req.body;
+        const { inventory_id, part_name, qty_issued, issued_to, machine, issued_at } = req.body;
 
-        if (!part_name || !qty_issued || !issued_to || !machine) {
+        if (!part_name || !qty_issued || !issued_to || !machine || !issued_at) {
             return res.status(400).json({ error: 'Missing required fields' });
         }
 
@@ -41,7 +41,8 @@ exports.issuePart = async (req, res) => {
                     part_name,
                     qty_issued: qty,
                     issued_to,
-                    machine
+                    machine,
+                    issued_at: new Date(issued_at)
                 }
             });
 

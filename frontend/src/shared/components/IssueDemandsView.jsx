@@ -15,7 +15,8 @@ export default function IssueDemandsView({
     inventory_id: '',
     qty_issued: '',
     issued_to: '',
-    machine: ''
+    machine: '',
+    issued_at: ''
   });
   const [partSearch, setPartSearch] = useState('');
   const [startDate, setStartDate] = useState('');
@@ -96,8 +97,8 @@ export default function IssueDemandsView({
     setError(null);
     setSuccess(null);
     
-    if (!formData.inventory_id || !formData.qty_issued || !formData.issued_to || !formData.machine) {
-      setError('Please fill in all fields.');
+    if (!formData.inventory_id || !formData.qty_issued || !formData.issued_to || !formData.machine || !formData.issued_at) {
+      setError('Please fill in all fields including Date Issued.');
       return;
     }
 
@@ -122,7 +123,8 @@ export default function IssueDemandsView({
           part_name: selectedItem.partName,
           qty_issued: qty,
           issued_to: formData.issued_to,
-          machine: formData.machine
+          machine: formData.machine,
+          issued_at: formData.issued_at
         })
       });
 
@@ -132,7 +134,7 @@ export default function IssueDemandsView({
       }
 
       setSuccess(`Successfully issued ${qty} of ${selectedItem.partName} to ${formData.issued_to}.`);
-      setFormData({ inventory_id: '', qty_issued: '', issued_to: '', machine: '' });
+      setFormData({ inventory_id: '', qty_issued: '', issued_to: '', machine: '', issued_at: '' });
       setPartSearch('');
       await fetchData(); // Refresh inventory and issued history
       await fetchIssuedHistory(); // Refresh local issue history table
@@ -233,6 +235,17 @@ export default function IssueDemandsView({
             <datalist id="issue-machines-list">
               {globalUniqueMachines.map(mac => <option key={mac} value={mac} />)}
             </datalist>
+          </div>
+
+          <div>
+            <label style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-secondary)', display: 'block', marginBottom: '0.25rem' }}>Date & Time Issued *</label>
+            <input 
+              type="datetime-local" 
+              className="filter-select" 
+              style={{ width: '100%', padding: '0.6rem' }} 
+              value={formData.issued_at} 
+              onChange={e => setFormData({...formData, issued_at: e.target.value})}
+            />
           </div>
 
           <div style={{ gridColumn: '1 / -1', display: 'flex', justifyContent: 'flex-end', marginTop: '0.5rem' }}>

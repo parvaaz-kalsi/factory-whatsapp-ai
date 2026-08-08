@@ -53,7 +53,7 @@ async function fetchInventoryContext() {
 }
 
 async function generateWithRetry(prompt, isAudio = false, audioBase64 = null) {
-    const models = ["gemini-2.5-flash", "gemini-2.5-pro"];
+    const models = ["gemini-3.5-flash", "gemini-2.5-flash"];
     const maxRetries = 3;
     const delays = [2000, 4000, 6000];
 
