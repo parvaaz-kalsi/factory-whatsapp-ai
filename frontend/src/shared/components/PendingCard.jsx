@@ -787,22 +787,47 @@ export default function PendingCard({ item, voiceNotes = [], currentUserRole, on
               <div style={{ display: 'flex', gap: '0.75rem', marginTop: 'auto' }}>
                 {activeTab === 'receiving' ? (
                   /* RECEIVING ACTIONS */
-                  <button 
-                    onClick={() => setIsEditing(true)}
-                    className="btn-refresh"
-                    style={{
-                      flexGrow: 1,
-                      justifyContent: 'center',
-                      backgroundColor: 'var(--accent-blue-bg)',
-                      borderColor: '#bfdbfe',
-                      color: 'var(--accent-blue-text)',
-                      fontWeight: 600,
-                      fontSize: '0.85rem',
-                      padding: '0.55rem',
-                    }}
-                  >
-                    Review & Receive
-                  </button>
+                  <>
+                    <button 
+                      onClick={() => setIsEditing(true)}
+                      className="btn-refresh"
+                      style={{
+                        flexGrow: 1,
+                        justifyContent: 'center',
+                        backgroundColor: 'var(--accent-blue-bg)',
+                        borderColor: '#bfdbfe',
+                        color: 'var(--accent-blue-text)',
+                        fontWeight: 600,
+                        fontSize: '0.85rem',
+                        padding: '0.55rem',
+                      }}
+                    >
+                      Review & Receive
+                    </button>
+                    <button 
+                      onClick={() => onReject(item.id)}
+                      disabled={rejectingId === item.id}
+                      className="btn-refresh"
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '0.35rem',
+                        flexGrow: 1,
+                        justifyContent: 'center',
+                        backgroundColor: 'var(--accent-rose-bg)',
+                        borderColor: '#fecaca',
+                        color: 'var(--accent-rose-text)',
+                        fontWeight: 600,
+                        fontSize: '0.85rem',
+                        padding: '0.55rem',
+                        opacity: rejectingId === item.id ? 0.7 : 1
+                      }}
+                    >
+                      {rejectingId === item.id ? (
+                        <><FiRefreshCw size={14} style={{ animation: 'spin 1s linear infinite' }} /> Rejecting...</>
+                      ) : 'Reject'}
+                    </button>
+                  </>
                 ) : currentUserRole === 'reviewer' ? (
                   /* REVIEWER ACTIONS */
                   <>

@@ -457,6 +457,7 @@ exports.reject = async (req, res) => {
         });
 
         console.log('Rejected:', result.part_name);
+        if (global.io) global.io.emit('dashboard_update');
         res.json({ success: true });
     } catch (err) {
         if (err.code === 'P2025') return res.status(404).json({ error: 'Pending request not found' });

@@ -414,16 +414,28 @@ export default function DemandTable(props) {
                         ) : item.isOrdered ? <><FiCheck size={12} /> Ordered</> : 'Mark as Ordered'}
                       </button>
                     ) : activeTab === 'receiving' ? (
-                      <button 
-                        className="btn-refresh" 
-                        disabled={receivingId === item.id}
-                        style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', padding: '0.3rem 0.6rem', fontSize: '0.75rem', backgroundColor: 'var(--accent-green-bg)', borderColor: '#bbf7d0', color: 'var(--accent-green-text)', fontWeight: 600, opacity: receivingId === item.id ? 0.7 : 1 }}
-                        onClick={() => handleReceive(item.id)}
-                      >
-                        {receivingId === item.id ? (
-                          <><FiRefreshCw size={12} style={{ animation: 'spin 1s linear infinite' }} /> Processing</>
-                        ) : 'Mark as Received'}
-                      </button>
+                      <div style={{ display: 'inline-flex', gap: '0.35rem' }}>
+                        <button 
+                          className="btn-refresh" 
+                          disabled={receivingId === item.id}
+                          style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', padding: '0.3rem 0.6rem', fontSize: '0.75rem', backgroundColor: 'var(--accent-green-bg)', borderColor: '#bbf7d0', color: 'var(--accent-green-text)', fontWeight: 600, opacity: receivingId === item.id ? 0.7 : 1 }}
+                          onClick={() => handleReceive(item.id)}
+                        >
+                          {receivingId === item.id ? (
+                            <><FiRefreshCw size={12} style={{ animation: 'spin 1s linear infinite' }} /> Processing</>
+                          ) : 'Mark as Received'}
+                        </button>
+                        <button 
+                          className="btn-refresh" 
+                          style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', padding: '0.3rem 0.6rem', fontSize: '0.75rem', backgroundColor: 'var(--accent-rose-bg)', borderColor: '#fecaca', color: 'var(--accent-rose-text)', opacity: rejectingId === item.id ? 0.7 : 1 }}
+                          onClick={() => handleReject(item.id)}
+                          disabled={rejectingId === item.id}
+                        >
+                          {rejectingId === item.id ? (
+                            <><FiRefreshCw size={12} style={{ animation: 'spin 1s linear infinite' }} /> Rejecting</>
+                          ) : 'Reject'}
+                        </button>
+                      </div>
                     ) : isEditingRow ? (
                       <div style={{ display: 'inline-flex', gap: '0.35rem' }}>
                         <button 
