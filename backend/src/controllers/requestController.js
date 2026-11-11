@@ -15,25 +15,38 @@ exports.getApprovedRequests = async (req, res) => {
             orderBy: { demand_timestamp: 'desc' }
         });
         
-        let requests = dbResult.map((row) => ({
-            id: row.id,
-            partName: row.part_name || '',
-            qty: row.qty || '',
-            size: row.size || '',
-            material: row.material || '',
-            machine: row.machine || '',
-            vendor: row.vendor || '',
-            requestedBy: row.requested_by || '',
-            receivedAt: row.received_at || row.demand_timestamp,
-            demandTimestamp: row.demand_timestamp || '',
-            sku: row.sku || '',
-            regNo: row.reg_no || '',
-            category: row.category || '',
-            price: row.rate || row.price || '',
-            unit: row.unit || '',
-            status: row.status || 'received',
-            isOrdered: row.is_ordered || false
-        }));
+        let requests = dbResult.map((row) => {
+            const rawRate = row.rate || row.price || '';
+            const qtyNum = parseFloat(String(row.qty || '').replace(/[^0-9.]/g, ''));
+            const rateNum = parseFloat(String(rawRate).replace(/[^0-9.]/g, ''));
+            const calculatedAmount = (!isNaN(qtyNum) && !isNaN(rateNum) && qtyNum > 0 && rateNum > 0)
+                ? (qtyNum * rateNum).toFixed(2).replace(/\.00$/, '')
+                : '';
+            const cleanAmt = (row.amount !== null && row.amount !== undefined)
+                ? String(row.amount).replace(/[\$Rs\s]/g, '').trim()
+                : '';
+
+            return {
+                id: row.id,
+                partName: row.part_name || '',
+                qty: row.qty || '',
+                size: row.size || '',
+                material: row.material || '',
+                machine: row.machine || '',
+                vendor: row.vendor || '',
+                requestedBy: row.requested_by || '',
+                receivedAt: row.received_at || row.demand_timestamp,
+                demandTimestamp: row.demand_timestamp || '',
+                sku: row.sku || '',
+                regNo: row.reg_no || '',
+                category: row.category || '',
+                price: rawRate,
+                amount: cleanAmt !== '' ? cleanAmt : calculatedAmount,
+                unit: row.unit || '',
+                status: row.status || 'received',
+                isOrdered: row.is_ordered || false
+            };
+        });
 
         // Fallback: If DB is empty, try fetching from Google Sheets (legacy data support)
         if (requests.length === 0) {
@@ -157,6 +170,16 @@ exports.getPending = async (req, res) => {
                 }
             }
 
+            const qtyNum = parseFloat(String(row.qty || '').replace(/[^0-9.]/g, ''));
+            const rateNum = parseFloat(String(priceVal || '').replace(/[^0-9.]/g, ''));
+            const calculatedAmount = (!isNaN(qtyNum) && !isNaN(rateNum) && qtyNum > 0 && rateNum > 0)
+                ? (qtyNum * rateNum).toFixed(2).replace(/\.00$/, '')
+                : '';
+
+            const cleanAmt = (row.amount !== null && row.amount !== undefined)
+                ? String(row.amount).replace(/[\$Rs\s]/g, '').trim()
+                : '';
+
             return {
                 id: row.id,
                 partName: row.part_name || '',
@@ -172,6 +195,7 @@ exports.getPending = async (req, res) => {
                 unit: row.unit || '',
                 category: categoryValue,
                 price: priceVal,
+                amount: cleanAmt !== '' ? cleanAmt : calculatedAmount,
                 availableStock,
                 stockWarning,
                 suggestedMatch,
@@ -201,6 +225,16 @@ exports.createPending = async (req, res) => {
         const id = Date.now() + '-' + Math.floor(Math.random() * 1000);
         const receivedAt = new Date();
 
+        const reqQty = parseFloat(String(item.qty || '').replace(/[^0-9.]/g, ''));
+        const reqRate = parseFloat(String(item.price || item.rate || '').replace(/[^0-9.]/g, ''));
+        const defaultAmt = (!isNaN(reqQty) && !isNaN(reqRate) && reqQty > 0 && reqRate > 0)
+            ? (reqQty * reqRate).toFixed(2).replace(/\.00$/, '')
+            : '';
+        const cleanAmt = (item.amount !== undefined && item.amount !== null)
+            ? String(item.amount).replace(/[\$Rs\s]/g, '').trim()
+            : '';
+        const finalAmt = cleanAmt !== '' ? cleanAmt : defaultAmt;
+
         await prisma.pending_requests.create({
             data: {
                 id,
@@ -216,6 +250,7 @@ exports.createPending = async (req, res) => {
                 demand_timestamp: new Date(),
                 received_at: receivedAt,
                 rate: item.price || '',
+                amount: finalAmt,
                 status: 'pending_review'
             }
         });
@@ -224,6 +259,7 @@ exports.createPending = async (req, res) => {
             material: item.material || '', machine: item.machine || '', vendor: item.vendor || '',
             requestedBy: item.requestedBy || 'WhatsApp User', receivedAt: receivedAt.toISOString(),
             sku: item.sku || '', category: item.category || '', price: item.price || '',
+            amount: finalAmt,
             availableStock: item.availableStock || '', stockWarning: item.stockWarning || '',
             suggestedMatch: item.suggestedMatch || '' };
 
@@ -247,6 +283,20 @@ exports.approve = async (req, res) => {
         const dbRow = await prisma.pending_requests.findUnique({ where: { id } });
         if (!dbRow) return res.status(404).json({ error: 'Pending request not found' });
 
+        const rawRate = approvedData.price || approvedData.rate || dbRow.rate || '';
+        const qNum = parseFloat(String(approvedData.qty || dbRow.qty || '').replace(/[^0-9.]/g, ''));
+        const rNum = parseFloat(String(rawRate).replace(/[^0-9.]/g, ''));
+        const fallbackAmt = (!isNaN(qNum) && !isNaN(rNum) && qNum > 0 && rNum > 0)
+            ? (qNum * rNum).toFixed(2).replace(/\.00$/, '')
+            : '';
+        const cleanAmt = (approvedData.amount !== undefined && approvedData.amount !== null)
+            ? String(approvedData.amount).replace(/[\$Rs\s]/g, '').trim()
+            : '';
+        const cleanDbAmt = (dbRow.amount !== null && dbRow.amount !== undefined)
+            ? String(dbRow.amount).replace(/[\$Rs\s]/g, '').trim()
+            : '';
+        const finalAmt = cleanAmt !== '' ? cleanAmt : (cleanDbAmt !== '' ? cleanDbAmt : fallbackAmt);
+
         await prisma.pending_requests.update({
             where: { id },
             data: {
@@ -261,7 +311,8 @@ exports.approve = async (req, res) => {
                 category: approvedData.category || dbRow.category || '',
                 machine: approvedData.machine || dbRow.machine || '',
                 vendor: approvedData.vendor || dbRow.vendor || '',
-                rate: approvedData.price || approvedData.rate || dbRow.rate || ''
+                rate: rawRate,
+                amount: finalAmt
             }
         });
 
@@ -322,6 +373,20 @@ exports.receive = async (req, res) => {
         // If request body contains updated parameters from the receiver, save them first
         if (req.body && Object.keys(req.body).length > 0) {
             const b = req.body;
+            const updatedRate = (b.price !== undefined ? String(b.price) : (b.rate !== undefined ? String(b.rate) : dbRow.rate)) || '';
+            const qNum = parseFloat(String(b.qty !== undefined ? b.qty : dbRow.qty || '').replace(/[^0-9.]/g, ''));
+            const rNum = parseFloat(String(updatedRate).replace(/[^0-9.]/g, ''));
+            const fallbackAmt = (!isNaN(qNum) && !isNaN(rNum) && qNum > 0 && rNum > 0)
+                ? (qNum * rNum).toFixed(2).replace(/\.00$/, '')
+                : '';
+            const cleanAmt = (b.amount !== undefined && b.amount !== null)
+                ? String(b.amount).replace(/[\$Rs\s]/g, '').trim()
+                : '';
+            const cleanDbAmt = (dbRow.amount !== null && dbRow.amount !== undefined)
+                ? String(dbRow.amount).replace(/[\$Rs\s]/g, '').trim()
+                : '';
+            const updatedAmt = cleanAmt !== '' ? cleanAmt : (cleanDbAmt !== '' ? cleanDbAmt : fallbackAmt);
+
             await prisma.pending_requests.update({
                 where: { id },
                 data: {
@@ -335,7 +400,8 @@ exports.receive = async (req, res) => {
                     machine: (b.machine !== undefined ? b.machine : dbRow.machine) || '',
                     category: (b.category !== undefined ? b.category : dbRow.category) || '',
                     vendor: (b.vendor !== undefined ? b.vendor : dbRow.vendor) || '',
-                    rate: (b.price !== undefined ? String(b.price) : (b.rate !== undefined ? String(b.rate) : dbRow.rate)) || '',
+                    rate: updatedRate,
+                    amount: updatedAmt,
                     edited_by: 'Receiver',
                     edited_at: new Date()
                 }
@@ -490,6 +556,17 @@ exports.edit = async (req, res) => {
 
         const editorRoleName = editData.role === 'manager' ? 'Manager' : (editData.role === 'receiver' ? 'Receiver' : 'Reviewer');
 
+        const editRate = editData.price || editData.rate || '';
+        const qNum = parseFloat(String(editData.qty !== undefined ? editData.qty : '').replace(/[^0-9.]/g, ''));
+        const rNum = parseFloat(String(editRate).replace(/[^0-9.]/g, ''));
+        const fallbackAmt = (!isNaN(qNum) && !isNaN(rNum) && qNum > 0 && rNum > 0)
+            ? (qNum * rNum).toFixed(2).replace(/\.00$/, '')
+            : '';
+        const cleanAmt = (editData.amount !== undefined && editData.amount !== null)
+            ? String(editData.amount).replace(/[\$Rs\s]/g, '').trim()
+            : '';
+        const finalAmt = cleanAmt !== '' ? cleanAmt : fallbackAmt;
+
         const result = await prisma.pending_requests.update({
             where: { id },
             data: {
@@ -501,7 +578,8 @@ exports.edit = async (req, res) => {
                 category: editData.category || '',
                 machine: editData.machine || '',
                 vendor: editData.vendor || '',
-                rate: editData.price || editData.rate || '',
+                rate: editRate,
+                amount: finalAmt,
                 sku: editData.sku || '',
                 reg_no: editData.regNo || '',
                 edited_by: editorRoleName,
@@ -528,6 +606,17 @@ exports.forward = async (req, res) => {
         const editData = req.body;
         if (!editData) return res.status(400).json({ error: 'Empty payload' });
 
+        const fwdRate = editData.price || editData.rate || '';
+        const qNum = parseFloat(String(editData.qty || '').replace(/[^0-9.]/g, ''));
+        const rNum = parseFloat(String(fwdRate).replace(/[^0-9.]/g, ''));
+        const fallbackAmt = (!isNaN(qNum) && !isNaN(rNum) && qNum > 0 && rNum > 0)
+            ? (qNum * rNum).toFixed(2).replace(/\.00$/, '')
+            : '';
+        const cleanAmt = (editData.amount !== undefined && editData.amount !== null)
+            ? String(editData.amount).replace(/[\$Rs\s]/g, '').trim()
+            : '';
+        const finalAmt = cleanAmt !== '' ? cleanAmt : fallbackAmt;
+
         const result = await prisma.pending_requests.update({
             where: { id },
             data: {
@@ -539,7 +628,8 @@ exports.forward = async (req, res) => {
                 category: editData.category || '',
                 machine: editData.machine || '',
                 vendor: editData.vendor || '',
-                rate: editData.price || editData.rate || '',
+                rate: fwdRate,
+                amount: finalAmt,
                 status: 'reviewed',
                 edited_by: 'Reviewer',
                 edited_at: new Date(),
@@ -624,6 +714,17 @@ exports.createCustomDemand = async (req, res) => {
         const receivedAt = new Date();
         const status = item.status || 'pending_review';
 
+        const custRate = item.price || item.rate || '';
+        const qNum = parseFloat(String(item.qty || '').replace(/[^0-9.]/g, ''));
+        const rNum = parseFloat(String(custRate).replace(/[^0-9.]/g, ''));
+        const fallbackAmt = (!isNaN(qNum) && !isNaN(rNum) && qNum > 0 && rNum > 0)
+            ? (qNum * rNum).toFixed(2).replace(/\.00$/, '')
+            : '';
+        const cleanAmt = (item.amount !== undefined && item.amount !== null)
+            ? String(item.amount).replace(/[\$Rs\s]/g, '').trim()
+            : '';
+        const finalAmt = cleanAmt !== '' ? cleanAmt : fallbackAmt;
+
         await prisma.pending_requests.create({
             data: {
                 id,
@@ -637,7 +738,8 @@ exports.createCustomDemand = async (req, res) => {
                 requested_by: item.editorName || 'Editor',
                 demand_timestamp: new Date(),
                 received_at: receivedAt,
-                rate: item.price || '',
+                rate: custRate,
+                amount: finalAmt,
                 status,
                 unit: item.unit || '',
                 sku: item.sku || '',

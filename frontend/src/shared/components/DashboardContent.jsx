@@ -852,6 +852,7 @@ export default function DashboardContent(props) { // Force HMR reload
                         approvingId={approvingId}
                         forwardingId={forwardingId}
                         receivingId={receivingId}
+                        fetchData={fetchData}
                       />
                     )}
                   </div>
@@ -956,10 +957,25 @@ export default function DashboardContent(props) { // Force HMR reload
                   </datalist>
                 </div>
               </div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '1rem' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: '1rem' }}>
                 <div>
                   <label style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-secondary)', display: 'block', marginBottom: '0.25rem' }}>Quantity *</label>
-                  <input type="text" className="filter-select" style={{ width: '100%' }} value={customDemandData.qty} onChange={e => setCustomDemandData({...customDemandData, qty: e.target.value.replace(/[^\d.]/g, '')})} placeholder="e.g. 500" />
+                  <input
+                    type="text"
+                    className="filter-select"
+                    style={{ width: '100%' }}
+                    value={customDemandData.qty}
+                    onChange={e => {
+                      const newQty = e.target.value.replace(/[^\d.]/g, '');
+                      const q = parseFloat(newQty);
+                      const r = parseFloat(String(customDemandData.price || '').replace(/[^0-9.]/g, ''));
+                      const autoAmt = (!isNaN(q) && !isNaN(r) && q > 0 && r > 0)
+                        ? (q * r).toFixed(2).replace(/\.00$/, '')
+                        : '';
+                      setCustomDemandData(prev => ({ ...prev, qty: newQty, amount: autoAmt }));
+                    }}
+                    placeholder="e.g. 500"
+                  />
                 </div>
                 <div>
                   <label style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-secondary)', display: 'block', marginBottom: '0.25rem' }}>Unit</label>
@@ -970,7 +986,36 @@ export default function DashboardContent(props) { // Force HMR reload
                 </div>
                 <div>
                   <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, marginBottom: '0.3rem', color: 'var(--text-secondary)' }}>Rate (Est. Price)</label>
-                  <input type="text" className="filter-select" style={{ width: '100%' }} value={customDemandData.price} onChange={e => setCustomDemandData({...customDemandData, price: e.target.value})} placeholder="e.g. Rs.5.00" />
+                  <input
+                    type="text"
+                    className="filter-select"
+                    style={{ width: '100%' }}
+                    value={customDemandData.price}
+                    onChange={e => {
+                      const newRate = e.target.value;
+                      const q = parseFloat(String(customDemandData.qty || '').replace(/[^0-9.]/g, ''));
+                      const r = parseFloat(String(newRate || '').replace(/[^0-9.]/g, ''));
+                      const autoAmt = (!isNaN(q) && !isNaN(r) && q > 0 && r > 0)
+                        ? (q * r).toFixed(2).replace(/\.00$/, '')
+                        : '';
+                      setCustomDemandData(prev => ({ ...prev, price: newRate, amount: autoAmt }));
+                    }}
+                    placeholder="e.g. Rs.5.00"
+                  />
+                </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, marginBottom: '0.3rem', color: 'var(--text-secondary)' }}>Amount (Total)</label>
+                  <input
+                    type="text"
+                    className="filter-select"
+                    style={{ width: '100%' }}
+                    value={customDemandData.amount !== undefined ? customDemandData.amount : ''}
+                    onChange={e => {
+                      const val = e.target.value.replace(/[^0-9.]/g, '');
+                      setCustomDemandData(prev => ({ ...prev, amount: val }));
+                    }}
+                    placeholder="0.00"
+                  />
                 </div>
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>

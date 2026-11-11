@@ -53,12 +53,14 @@ export default function App() {
     sku: '',
     regNo: '',
     qty: '',
+    unit: '',
     size: '',
     material: '',
     category: '',
     machine: '',
     vendor: '',
-    price: ''
+    price: '',
+    amount: ''
   });
 
   const [inventoryEditingId, setInventoryEditingId] = useState(null);
@@ -87,7 +89,7 @@ export default function App() {
   // Custom Demand State
   const [showCustomDemandModal, setShowCustomDemandModal] = useState(false);
   const [customDemandData, setCustomDemandData] = useState({
-    partName: '', sku: '', regNo: '', qty: '', unit: '', size: '', material: '', machine: '', vendor: '', price: ''
+    partName: '', sku: '', regNo: '', qty: '', unit: '', size: '', material: '', machine: '', vendor: '', price: '', amount: ''
   });
 
   const [kpiData, setKpiData] = useState({
@@ -504,15 +506,23 @@ export default function App() {
     // This now respects Date range, Machine, Vendor, and Search queries!
     const data = filteredRequests;
     
-    return data.map(r => ({
-      'Part Name': r.partName || '—',
-      'Qty': r.qty || '—',
-      'Size': r.size || '—',
-      'Material': r.material || '—',
-      'Machine': r.machine || '—',
-      'Vendor': r.vendor || '—',
-      'Rate': r.rate || r.price || '—'
-    }));
+    return data.map(r => {
+      const q = parseFloat(String(r.qty || '').replace(/[^0-9.]/g, ''));
+      const rt = parseFloat(String(r.rate || r.price || '').replace(/[^0-9.]/g, ''));
+      const autoAmt = (!isNaN(q) && !isNaN(rt) && q > 0 && rt > 0)
+        ? (q * rt).toFixed(2).replace(/\.00$/, '')
+        : '—';
+      return {
+        'Part Name': r.partName || '—',
+        'Qty': r.qty || '—',
+        'Size': r.size || '—',
+        'Material': r.material || '—',
+        'Machine': r.machine || '—',
+        'Vendor': r.vendor || '—',
+        'Rate': r.rate || r.price || '—',
+        'Amount': (r.amount !== undefined && r.amount !== null && r.amount !== '') ? r.amount : autoAmt
+      };
+    });
   };
 
   const exportToExcel = () => {
@@ -815,17 +825,26 @@ export default function App() {
     const val = e.target.value;
     const matched = inventoryItems.find(i => i.partName === val);
     if (matched) {
-      setCustomDemandData(prev => ({
-        ...prev,
-        partName: val,
-        sku: matched.sku || '',
-        regNo: matched.regNo || '',
-        size: matched.size !== '—' ? (matched.size || prev.size) : prev.size,
-        material: matched.material !== '—' ? (matched.material || prev.material) : prev.material,
-        machine: matched.machine !== 'General Compatibility' ? (matched.machine || prev.machine) : prev.machine,
-        vendor: matched.vendor !== '—' ? (matched.vendor || prev.vendor) : prev.vendor,
-        price: matched.price || prev.price
-      }));
+      setCustomDemandData(prev => {
+        const newPrice = matched.price || prev.price;
+        const q = parseFloat(String(prev.qty || '').replace(/[^0-9.]/g, ''));
+        const r = parseFloat(String(newPrice || '').replace(/[^0-9.]/g, ''));
+        const autoAmt = (!isNaN(q) && !isNaN(r) && q > 0 && r > 0)
+          ? (q * r).toFixed(2).replace(/\.00$/, '')
+          : prev.amount;
+        return {
+          ...prev,
+          partName: val,
+          sku: matched.sku || '',
+          regNo: matched.regNo || '',
+          size: matched.size !== '—' ? (matched.size || prev.size) : prev.size,
+          material: matched.material !== '—' ? (matched.material || prev.material) : prev.material,
+          machine: matched.machine !== 'General Compatibility' ? (matched.machine || prev.machine) : prev.machine,
+          vendor: matched.vendor !== '—' ? (matched.vendor || prev.vendor) : prev.vendor,
+          price: newPrice,
+          amount: autoAmt
+        };
+      });
     } else {
       setCustomDemandData(prev => ({ ...prev, partName: val }));
     }
@@ -868,7 +887,7 @@ export default function App() {
       });
       if (response.ok) {
         setCustomDemandData({
-          partName: '', sku: '', regNo: '', qty: '', unit: '', size: '', material: '', machine: '', vendor: '', price: ''
+          partName: '', sku: '', regNo: '', qty: '', unit: '', size: '', material: '', machine: '', vendor: '', price: '', amount: ''
         });
         setShowCustomDemandModal(false);
 

@@ -274,11 +274,19 @@ async function savePendingRequest(item, senderName = 'WhatsApp User') {
         const id = Date.now() + '-' + Math.floor(Math.random() * 1000);
         const receivedAt = new Date();
 
+        const rawQty = String(item["Qty Required"] || item.qty || '').replace(/[^\d.]/g, '');
+        const reqRate = item["Price"] || item.price || '';
+        const qNum = parseFloat(rawQty);
+        const rNum = parseFloat(String(reqRate).replace(/[^0-9.]/g, ''));
+        const autoAmt = (!isNaN(qNum) && !isNaN(rNum) && qNum > 0 && rNum > 0)
+            ? (qNum * rNum).toFixed(2).replace(/\.00$/, '')
+            : (item.amount ? String(item.amount) : '');
+
         await prisma.pending_requests.create({
             data: {
                 id,
                 part_name: item["Part Name"] || item.partName || '',
-                qty: String(item["Qty Required"] || item.qty || '').replace(/[^\d.]/g, ''),
+                qty: rawQty,
                 size: item["Size"] || item.size || '',
                 material: item["Material"] || item.material || '',
                 machine: item["For Machine"] || item.machine || '',
@@ -286,7 +294,8 @@ async function savePendingRequest(item, senderName = 'WhatsApp User') {
                 requested_by: senderName,
                 demand_timestamp: new Date(),
                 received_at: receivedAt,
-                rate: item["Price"] || item.price || '',
+                rate: reqRate,
+                amount: autoAmt,
                 status: 'pending_review',
                 unit: standardizeUnit(item["Unit"] || item.unit || '')
             }

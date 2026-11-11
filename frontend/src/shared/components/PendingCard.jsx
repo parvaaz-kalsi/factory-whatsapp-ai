@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { FiRefreshCw, FiCheckCircle, FiXCircle, FiCornerUpRight, FiEdit2, FiSave, FiX, FiAlertCircle, FiDatabase, FiPlus, FiAlertTriangle, FiSearch, FiCopy, FiBox } from 'react-icons/fi';
 import { standardizeUnit, displayQty, displayUnit } from '../../utils/unitStandardizer';
@@ -50,13 +50,26 @@ const CardHeaderIllustration = ({ category }) => {
   );
 };
 
-export default function PendingCard({ item, voiceNotes = [], currentUserRole, onApprove, onReject, onForward, activeTab, onReceive, inventoryItems = [], rejectingId, approvingId, forwardingId, receivingId }) {
+export default function PendingCard({ item, voiceNotes = [], currentUserRole, onApprove, onReject, onForward, activeTab, onReceive, inventoryItems = [], rejectingId, approvingId, forwardingId, receivingId, fetchData }) {
   const category = getCategory(item.partName);
   
   // Custom voice player state
   const [isPlaying, setIsPlaying] = useState(false);
   const audioRef = useRef(null);
   
+  // Helper to compute initial amount
+  const getInitialAmount = (itemObj) => {
+    if (itemObj.amount !== undefined && itemObj.amount !== null && itemObj.amount !== '') {
+      return String(itemObj.amount).replace(/[\$Rs\s]/g, '');
+    }
+    const q = parseFloat(String(displayQty(itemObj.qty, itemObj.unit) || '').replace(/[^0-9.]/g, ''));
+    const r = parseFloat(String(itemObj.price || itemObj.rate || '').replace(/[^0-9.]/g, ''));
+    if (!isNaN(q) && !isNaN(r) && q > 0 && r > 0) {
+      return (q * r).toFixed(2).replace(/\.00$/, '');
+    }
+    return '';
+  };
+
   // Edit State
   const [isEditing, setIsEditing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -71,8 +84,28 @@ export default function PendingCard({ item, voiceNotes = [], currentUserRole, on
     machine: item.machine || '',
     vendor: item.vendor || '',
     category: item.category || '',
-    price: String(item.price || item.rate || '').replace(/[\$Rs\s]/g, '')
+    price: String(item.price || item.rate || '').replace(/[\$Rs\s]/g, ''),
+    amount: getInitialAmount(item)
   });
+
+  useEffect(() => {
+    if (!isEditing) {
+      setFormData({
+        partName: item.partName || '',
+        sku: item.sku || '',
+        regNo: item.regNo || '',
+        qty: displayQty(item.qty, item.unit),
+        unit: displayUnit(item.qty, item.unit),
+        size: item.size || '',
+        material: item.material || '',
+        machine: item.machine || '',
+        vendor: item.vendor || '',
+        category: item.category || '',
+        price: String(item.price || item.rate || '').replace(/[\$Rs\s]/g, ''),
+        amount: getInitialAmount(item)
+      });
+    }
+  }, [item, isEditing]);
 
   // Add to Inventory Modal State
   const [showAddInventory, setShowAddInventory] = useState(false);
@@ -167,7 +200,26 @@ export default function PendingCard({ item, voiceNotes = [], currentUserRole, on
   const handleInputChange = (e) => {
     const { name, value } = e.target;
     console.log(`[Console Log - PendingCard] Field "${name}" changed to:`, value);
-    setFormData(prev => ({ ...prev, [name]: value }));
+    if (name === 'price') {
+      const q = parseFloat(String(formData.qty || '').replace(/[^0-9.]/g, ''));
+      const r = parseFloat(String(value || '').replace(/[^0-9.]/g, ''));
+      const autoAmt = (!isNaN(q) && !isNaN(r) && q > 0 && r > 0)
+        ? (q * r).toFixed(2).replace(/\.00$/, '')
+        : '';
+      setFormData(prev => ({ ...prev, price: value, amount: autoAmt }));
+    } else if (name === 'qty') {
+      const q = parseFloat(String(value || '').replace(/[^0-9.]/g, ''));
+      const r = parseFloat(String(formData.price || '').replace(/[^0-9.]/g, ''));
+      const autoAmt = (!isNaN(q) && !isNaN(r) && q > 0 && r > 0)
+        ? (q * r).toFixed(2).replace(/\.00$/, '')
+        : '';
+      setFormData(prev => ({ ...prev, qty: value, amount: autoAmt }));
+    } else if (name === 'amount') {
+      const cleanVal = value.replace(/[^0-9.]/g, '');
+      setFormData(prev => ({ ...prev, amount: cleanVal }));
+    } else {
+      setFormData(prev => ({ ...prev, [name]: value }));
+    }
   };
 
   const handlePartNameChange = (e) => {
@@ -175,6 +227,12 @@ export default function PendingCard({ item, voiceNotes = [], currentUserRole, on
     console.log('[Console Log - PendingCard] Selected Part Name:', val);
     const matched = inventoryItems.find(i => i.partName === val);
     if (matched) {
+      const matchedPrice = String(matched.price || formData.price).replace(/[\$Rs\.\s]/g, match => match === '.' ? '.' : '');
+      const q = parseFloat(String(formData.qty || '').replace(/[^0-9.]/g, ''));
+      const r = parseFloat(String(matchedPrice || '').replace(/[^0-9.]/g, ''));
+      const autoAmt = (!isNaN(q) && !isNaN(r) && q > 0 && r > 0)
+        ? (q * r).toFixed(2).replace(/\.00$/, '')
+        : formData.amount;
       setFormData(prev => ({
         ...prev,
         partName: val,
@@ -185,7 +243,8 @@ export default function PendingCard({ item, voiceNotes = [], currentUserRole, on
         material: matched.material !== '—' ? (matched.material || prev.material) : prev.material,
         machine: matched.machine !== 'General Compatibility' ? (matched.machine || prev.machine) : prev.machine,
         vendor: matched.vendor !== '—' ? (matched.vendor || prev.vendor) : prev.vendor,
-        price: String(matched.price || prev.price).replace(/[\$Rs\.\s]/g, match => match === '.' ? '.' : '')
+        price: matchedPrice,
+        amount: autoAmt
       }));
     } else {
       setFormData(prev => ({ ...prev, partName: val }));
@@ -214,9 +273,18 @@ export default function PendingCard({ item, voiceNotes = [], currentUserRole, on
         body: JSON.stringify({ ...formData, role: currentUserRole })
       });
       if (response.ok) {
+        const resData = await response.json();
+        if (resData.item) {
+          const updatedAmt = (resData.item.amount !== undefined && resData.item.amount !== null)
+            ? String(resData.item.amount).replace(/[\$Rs\s]/g, '').trim()
+            : formData.amount;
+          setFormData(prev => ({ ...prev, amount: updatedAmt }));
+        }
         setIsEditing(false);
         if (activeTab === 'receiving' && onReceive) {
            await onReceive(item.id, formData);
+        } else if (fetchData) {
+           await fetchData();
         } else {
            window.location.reload();
         }
@@ -239,8 +307,19 @@ export default function PendingCard({ item, voiceNotes = [], currentUserRole, on
         body: JSON.stringify({ ...formData, role: currentUserRole })
       });
       if (response.ok) {
+        const resData = await response.json();
+        if (resData.item) {
+          const updatedAmt = (resData.item.amount !== undefined && resData.item.amount !== null)
+            ? String(resData.item.amount).replace(/[\$Rs\s]/g, '').trim()
+            : formData.amount;
+          setFormData(prev => ({ ...prev, amount: updatedAmt }));
+        }
         setIsEditing(false);
-        window.location.reload();
+        if (fetchData) {
+           await fetchData();
+        } else {
+           window.location.reload();
+        }
       } else {
         alert('Failed to save edits to database.');
       }
@@ -263,7 +342,8 @@ export default function PendingCard({ item, voiceNotes = [], currentUserRole, on
       machine: item.machine || '',
       vendor: item.vendor || '',
       category: item.category || '',
-      price: String(item.price || item.rate || '').replace(/[\$Rs\s]/g, '')
+      price: String(item.price || item.rate || '').replace(/[\$Rs\s]/g, ''),
+      amount: getInitialAmount(item)
     });
     setIsEditing(false);
   };
@@ -545,6 +625,18 @@ export default function PendingCard({ item, voiceNotes = [], currentUserRole, on
                   onChange={handleInputChange}
                 />
               </div>
+              <div>
+                <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)' }}>Amount (Total)</label>
+                <input
+                  type="text"
+                  name="amount"
+                  placeholder="0.00"
+                  className="card-input"
+                  style={{ width: '100%', padding: '0.4rem 0.75rem', marginTop: '0.2rem' }}
+                  value={formData.amount !== undefined ? formData.amount : ''}
+                  onChange={handleInputChange}
+                />
+              </div>
             </div>
 
             <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem' }}>
@@ -770,7 +862,21 @@ export default function PendingCard({ item, voiceNotes = [], currentUserRole, on
               </div>
               <div className="spec-item">
                 <span className="spec-label">Rate (Est. Price)</span>
-                <span className="spec-val" style={{ fontWeight: 600, color: '#0f172a' }}>{formData.price ? `Rs.${formData.price}` : '—'}</span>
+                <span className="spec-val" style={{ fontWeight: 600, color: '#0f172a' }}>
+                  {(() => {
+                    const cleanRate = String(formData.price || '').replace(/[\$Rs\s]/g, '').trim();
+                    return cleanRate ? `Rs.${cleanRate}` : '—';
+                  })()}
+                </span>
+              </div>
+              <div className="spec-item">
+                <span className="spec-label">Amount (Total)</span>
+                <span className="spec-val" style={{ fontWeight: 600, color: '#0f172a' }}>
+                  {(() => {
+                    const cleanAmt = String(formData.amount || '').replace(/[\$Rs\s]/g, '').trim();
+                    return cleanAmt ? `Rs.${cleanAmt}` : '—';
+                  })()}
+                </span>
               </div>
               {item.availableStock && item.stockWarning !== 'No Inventory Match' ? (
                 <div className="spec-item">
@@ -838,7 +944,7 @@ export default function PendingCard({ item, voiceNotes = [], currentUserRole, on
                       Review & Edit
                     </button>
                     <button 
-                      onClick={() => onReceive(item.id)}
+                      onClick={() => onReceive(item.id, formData)}
                       disabled={receivingId === item.id}
                       className="btn-refresh"
                       style={{

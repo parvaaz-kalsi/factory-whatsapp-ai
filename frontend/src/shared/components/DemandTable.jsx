@@ -67,19 +67,28 @@ export default function DemandTable(props) {
     console.log('[Console Log - List View Edit] Selected Part Name:', val);
     const matched = inventoryItems.find(i => i.partName === val);
     if (matched) {
-      setEditFormData(prev => ({
-        ...prev,
-        partName: val,
-        sku: matched.sku || '',
-        regNo: matched.regNo || '',
-        size: matched.size !== '—' ? (matched.size || prev.size) : prev.size,
-        material: matched.material !== '—' ? (matched.material || prev.material) : prev.material,
-        category: matched.category !== '—' ? (matched.category || prev.category) : prev.category,
-        machine: matched.machine !== 'General Compatibility' ? (matched.machine || prev.machine) : prev.machine,
-        vendor: matched.vendor !== '—' ? (matched.vendor || prev.vendor) : prev.vendor,
-        price: matched.price || prev.price,
-        unit: matched.unit || prev.unit
-      }));
+      setEditFormData(prev => {
+        const newPrice = matched.price || prev.price;
+        const q = parseFloat(String(prev.qty || '').replace(/[^0-9.]/g, ''));
+        const r = parseFloat(String(newPrice || '').replace(/[^0-9.]/g, ''));
+        const autoAmt = (!isNaN(q) && !isNaN(r) && q > 0 && r > 0)
+          ? (q * r).toFixed(2).replace(/\.00$/, '')
+          : prev.amount;
+        return {
+          ...prev,
+          partName: val,
+          sku: matched.sku || '',
+          regNo: matched.regNo || '',
+          size: matched.size !== '—' ? (matched.size || prev.size) : prev.size,
+          material: matched.material !== '—' ? (matched.material || prev.material) : prev.material,
+          category: matched.category !== '—' ? (matched.category || prev.category) : prev.category,
+          machine: matched.machine !== 'General Compatibility' ? (matched.machine || prev.machine) : prev.machine,
+          vendor: matched.vendor !== '—' ? (matched.vendor || prev.vendor) : prev.vendor,
+          price: newPrice,
+          unit: matched.unit || prev.unit,
+          amount: autoAmt
+        };
+      });
     } else {
       setEditFormData(prev => ({ ...prev, partName: val }));
     }
@@ -116,6 +125,7 @@ export default function DemandTable(props) {
             <th style={{ padding: '1rem 1.25rem', fontWeight: 600, color: 'var(--text-secondary)' }}>Requested By</th>
             <th style={{ padding: '1rem 1.25rem', fontWeight: 600, color: 'var(--text-secondary)' }}>Timestamp</th>
             <th style={{ padding: '1rem 1.25rem', fontWeight: 600, color: 'var(--text-secondary)' }}>Rate</th>
+            <th style={{ padding: '1rem 1.25rem', fontWeight: 600, color: 'var(--text-secondary)' }}>Amount</th>
             {(activeTab === 'pending' || activeTab === 'receiving' || (activeTab === 'approved' && currentUserRole === 'reviewer')) && currentUserRole !== 'observer' && (
               <th style={{ padding: '1rem 1.25rem', fontWeight: 600, color: 'var(--text-secondary)', textAlign: 'right' }}>Actions</th>
             )}
@@ -228,7 +238,15 @@ export default function DemandTable(props) {
                     <input 
                       type="text"
                       value={editFormData.qty}
-                      onChange={(e) => setEditFormData(prev => ({ ...prev, qty: e.target.value.replace(/[^\d.]/g, '') }))}
+                      onChange={(e) => {
+                        const newQty = e.target.value.replace(/[^\d.]/g, '');
+                        const q = parseFloat(newQty);
+                        const r = parseFloat(String(editFormData.price || '').replace(/[^0-9.]/g, ''));
+                        const autoAmt = (!isNaN(q) && !isNaN(r) && q > 0 && r > 0)
+                          ? (q * r).toFixed(2).replace(/\.00$/, '')
+                          : '';
+                        setEditFormData(prev => ({ ...prev, qty: newQty, amount: autoAmt }));
+                      }}
                       placeholder="Qty"
                       className="filter-select"
                       style={{ width: '60px', padding: '0.35rem 0.6rem', fontSize: '0.85rem' }}
@@ -378,12 +396,52 @@ export default function DemandTable(props) {
                     <input 
                       type="text"
                       value={editFormData.price}
-                      onChange={(e) => setEditFormData({ ...editFormData, price: e.target.value })}
+                      onChange={(e) => {
+                        const newPrice = e.target.value.replace(/[^0-9.]/g, '');
+                        const q = parseFloat(String(editFormData.qty || '').replace(/[^0-9.]/g, ''));
+                        const r = parseFloat(newPrice);
+                        const autoAmt = (!isNaN(q) && !isNaN(r) && q > 0 && r > 0)
+                          ? (q * r).toFixed(2).replace(/\.00$/, '')
+                          : '';
+                        setEditFormData(prev => ({ ...prev, price: newPrice, amount: autoAmt }));
+                      }}
                       className="filter-select"
                       style={{ width: '80px', padding: '0.35rem 0.6rem', fontSize: '0.85rem' }}
                     />
                   ) : (
-                    item.price && parseFloat(item.price) > 0 ? `Rs.${item.price}` : (item.rate ? `Rs.${item.rate}` : '—')
+                    (() => {
+                      const cleanRate = String(item.price || item.rate || '').replace(/[\$Rs\s]/g, '').trim();
+                      return cleanRate ? `Rs.${cleanRate}` : '—';
+                    })()
+                  )}
+                </td>
+
+                {/* Amount */}
+                <td style={{ padding: '1rem 1.25rem', color: 'var(--text-primary)', fontWeight: 600 }}>
+                  {isEditingRow ? (
+                    <input 
+                      type="text"
+                      value={editFormData.amount !== undefined ? editFormData.amount : ''}
+                      onChange={(e) => {
+                        const val = e.target.value.replace(/[^0-9.]/g, '');
+                        setEditFormData(prev => ({ ...prev, amount: val }));
+                      }}
+                      placeholder="0.00"
+                      className="filter-select"
+                      style={{ width: '90px', padding: '0.35rem 0.6rem', fontSize: '0.85rem' }}
+                    />
+                  ) : (
+                    (() => {
+                      const cleanItemAmt = (item.amount !== undefined && item.amount !== null)
+                        ? String(item.amount).replace(/[\$Rs\s]/g, '').trim()
+                        : '';
+                      if (cleanItemAmt !== '') return `Rs.${cleanItemAmt}`;
+                      const q = parseFloat(String(item.qty || '').replace(/[^0-9.]/g, ''));
+                      const r = parseFloat(String(item.price || item.rate || '').replace(/[^0-9.]/g, ''));
+                      return (!isNaN(q) && !isNaN(r) && q > 0 && r > 0)
+                        ? `Rs.${(q * r).toFixed(2).replace(/\.00$/, '')}`
+                        : '—';
+                    })()
                   )}
                 </td>
 
@@ -474,6 +532,14 @@ export default function DemandTable(props) {
                           className="btn-refresh" 
                           style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', padding: '0.3rem 0.6rem', fontSize: '0.75rem', color: 'var(--accent-blue-text)', borderColor: '#bfdbfe' }} 
                           onClick={() => {
+                            const itemAmt = (item.amount !== undefined && item.amount !== null && item.amount !== '')
+                              ? String(item.amount).replace(/[\$Rs\s]/g, '')
+                              : (() => {
+                                  const q = parseFloat(String(item.qty || '').replace(/[^0-9.]/g, ''));
+                                  const r = parseFloat(String(item.price || item.rate || '').replace(/[^0-9.]/g, ''));
+                                  return (!isNaN(q) && !isNaN(r) && q > 0 && r > 0) ? (q * r).toFixed(2).replace(/\.00$/, '') : '';
+                                })();
+
                             setEditingRowId(item.id);
                             setEditFormData({
                               partName: item.partName || '',
@@ -486,7 +552,8 @@ export default function DemandTable(props) {
                               machine: item.machine || '',
                               category: item.category || '',
                               vendor: item.vendor || '',
-                              price: item.price || item.rate || ''
+                              price: String(item.price || item.rate || '').replace(/[\$Rs\s]/g, ''),
+                              amount: itemAmt
                             });
                           }}
                           title="Edit any parameters (P.No, Reg No, Vendor, Price, Size, etc.)"
@@ -511,6 +578,14 @@ export default function DemandTable(props) {
                           className="btn-refresh" 
                           style={{ padding: '0.3rem 0.6rem', fontSize: '0.75rem', color: 'var(--accent-blue-text)' }} 
                           onClick={() => {
+                            const itemAmt = (item.amount !== undefined && item.amount !== null && item.amount !== '')
+                              ? String(item.amount).replace(/[\$Rs\s]/g, '')
+                              : (() => {
+                                  const q = parseFloat(String(item.qty || '').replace(/[^0-9.]/g, ''));
+                                  const r = parseFloat(String(item.price || item.rate || '').replace(/[^0-9.]/g, ''));
+                                  return (!isNaN(q) && !isNaN(r) && q > 0 && r > 0) ? (q * r).toFixed(2).replace(/\.00$/, '') : '';
+                                })();
+
                             setEditingRowId(item.id);
                             setEditFormData({
                               partName: item.partName || '',
@@ -523,7 +598,8 @@ export default function DemandTable(props) {
                               machine: item.machine || '',
                               category: item.category || '',
                               vendor: item.vendor || '',
-                              price: item.price || item.rate || ''
+                              price: String(item.price || item.rate || '').replace(/[\$Rs\s]/g, ''),
+                              amount: itemAmt
                             });
                           }}
                         >
@@ -536,17 +612,27 @@ export default function DemandTable(props) {
                               className="btn-refresh" 
                               disabled={forwardingId === item.id}
                               style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', padding: '0.3rem 0.6rem', fontSize: '0.75rem', backgroundColor: 'var(--accent-green-bg)', borderColor: '#bbf7d0', color: 'var(--accent-green-text)', opacity: forwardingId === item.id ? 0.7 : 1 }}
-                              onClick={() => handleForward(item.id, {
-                                partName: item.partName,
-                                qty: item.qty,
-                                unit: item.unit,
-                                size: item.size,
-                                material: item.material,
-                                machine: item.machine,
-                                category: item.category,
-                                vendor: item.vendor,
-                                price: item.price || item.rate
-                              })}
+                              onClick={() => {
+                                const itemAmt = (item.amount !== undefined && item.amount !== null && item.amount !== '')
+                                  ? String(item.amount).replace(/[\$Rs\s]/g, '')
+                                  : (() => {
+                                      const q = parseFloat(String(item.qty || '').replace(/[^0-9.]/g, ''));
+                                      const r = parseFloat(String(item.price || item.rate || '').replace(/[^0-9.]/g, ''));
+                                      return (!isNaN(q) && !isNaN(r) && q > 0 && r > 0) ? (q * r).toFixed(2).replace(/\.00$/, '') : '';
+                                    })();
+                                handleForward(item.id, {
+                                  partName: item.partName,
+                                  qty: item.qty,
+                                  unit: item.unit,
+                                  size: item.size,
+                                  material: item.material,
+                                  machine: item.machine,
+                                  category: item.category,
+                                  vendor: item.vendor,
+                                  price: item.price || item.rate,
+                                  amount: itemAmt
+                                });
+                              }}
                             >
                               {forwardingId === item.id ? (
                                 <><FiRefreshCw size={12} style={{ animation: 'spin 1s linear infinite' }} /> Processing</>
@@ -569,17 +655,27 @@ export default function DemandTable(props) {
                               className="btn-refresh" 
                               disabled={approvingId === item.id}
                               style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', padding: '0.3rem 0.6rem', fontSize: '0.75rem', backgroundColor: 'var(--accent-green-bg)', borderColor: '#bbf7d0', color: 'var(--accent-green-text)', opacity: approvingId === item.id ? 0.7 : 1 }}
-                              onClick={() => handleApprove(item.id, {
-                                partName: item.partName,
-                                qty: item.qty,
-                                unit: item.unit,
-                                size: item.size,
-                                material: item.material,
-                                machine: item.machine,
-                                category: item.category,
-                                vendor: item.vendor,
-                                price: item.price || item.rate
-                              })}
+                              onClick={() => {
+                                const itemAmt = (item.amount !== undefined && item.amount !== null && item.amount !== '')
+                                  ? String(item.amount).replace(/[\$Rs\s]/g, '')
+                                  : (() => {
+                                      const q = parseFloat(String(item.qty || '').replace(/[^0-9.]/g, ''));
+                                      const r = parseFloat(String(item.price || item.rate || '').replace(/[^0-9.]/g, ''));
+                                      return (!isNaN(q) && !isNaN(r) && q > 0 && r > 0) ? (q * r).toFixed(2).replace(/\.00$/, '') : '';
+                                    })();
+                                handleApprove(item.id, {
+                                  partName: item.partName,
+                                  qty: item.qty,
+                                  unit: item.unit,
+                                  size: item.size,
+                                  material: item.material,
+                                  machine: item.machine,
+                                  category: item.category,
+                                  vendor: item.vendor,
+                                  price: item.price || item.rate,
+                                  amount: itemAmt
+                                });
+                              }}
                             >
                               {approvingId === item.id ? (
                                 <><FiRefreshCw size={12} style={{ animation: 'spin 1s linear infinite' }} /> Processing</>
