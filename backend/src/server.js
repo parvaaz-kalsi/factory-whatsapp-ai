@@ -53,13 +53,16 @@ httpServer.listen(PORT, async () => {
     // Ensure whatsapp_groups table exists
     await whatsappService.ensureWhatsappGroupsTable();
 
-    // Ensure amount column exists in pending_requests
+    // Ensure amount column exists in pending_requests & recycle bin columns in inventory
     try {
         const prisma = require('./config/db');
         await prisma.$executeRawUnsafe(`ALTER TABLE pending_requests ADD COLUMN IF NOT EXISTS amount VARCHAR(100);`);
-        console.log('Database schema verified (amount column present in pending_requests).');
+        await prisma.$executeRawUnsafe(`ALTER TABLE inventory ADD COLUMN IF NOT EXISTS is_deleted BOOLEAN DEFAULT false;`);
+        await prisma.$executeRawUnsafe(`ALTER TABLE inventory ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ;`);
+        await prisma.$executeRawUnsafe(`ALTER TABLE inventory ADD COLUMN IF NOT EXISTS deleted_by VARCHAR(255);`);
+        console.log('Database schema verified (amount column in pending_requests & recycle bin in inventory).');
     } catch (colErr) {
-        console.warn('Could not auto-verify amount column:', colErr.message);
+        console.warn('Could not auto-verify schema columns:', colErr.message);
     }
 
     // Start WhatsApp Bot Singleton in the same process

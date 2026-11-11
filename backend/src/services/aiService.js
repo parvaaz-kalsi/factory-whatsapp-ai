@@ -26,6 +26,12 @@ function decayTimestamps() {
 async function fetchInventoryContext() {
     try {
         const rows = await prisma.inventory.findMany({
+            where: {
+                OR: [
+                    { is_deleted: false },
+                    { is_deleted: null }
+                ]
+            },
             select: {
                 part_name: true,
                 sku: true,

@@ -112,7 +112,12 @@ export default function App() {
   const [inventoryLoading, setInventoryLoading] = useState(false);
   const [uniqueInventoryMachines, setUniqueInventoryMachines] = useState([]);
 
-  // Fetch live inventory catalog from DB
+  // Recycle Bin State
+  const [inventorySubTab, setInventorySubTab] = useState('active'); // 'active' or 'trash'
+  const [trashItems, setTrashItems] = useState([]);
+  const [trashLoading, setTrashLoading] = useState(false);
+
+  // Fetch live inventory catalog & trash from DB
   const fetchInventory = async () => {
     try {
       setInventoryLoading(true);
@@ -120,7 +125,11 @@ export default function App() {
         ? `/api/inventory?machine=${encodeURIComponent(selectedInventoryMachine)}`
         : '/api/inventory';
         
-      const response = await fetch(url);
+      const [response, trashRes] = await Promise.all([
+        fetch(url),
+        fetch('/api/inventory?trash=true')
+      ]);
+
       if (response.ok) {
         const data = await response.json();
         setInventoryItems(data);
@@ -130,6 +139,11 @@ export default function App() {
           const machines = Array.from(new Set(data.map(item => item.machine).filter(Boolean))).sort();
           setUniqueInventoryMachines(machines);
         }
+      }
+
+      if (trashRes && trashRes.ok) {
+        const trashData = await trashRes.json();
+        setTrashItems(trashData);
       }
     } catch (err) {
       console.error('Failed to fetch inventory catalog:', err);
@@ -286,14 +300,15 @@ export default function App() {
   async function fetchData() {
     try {
       setRefreshing(true);
-      const [pendingRes, approvedRes, voiceRes, kpiRes, inventoryRes, whatsappStatusRes, whatsappGroupsRes] = await Promise.all([
+      const [pendingRes, approvedRes, voiceRes, kpiRes, inventoryRes, whatsappStatusRes, whatsappGroupsRes, trashRes] = await Promise.all([
         fetch('/api/pending'),
         fetch('/api/requests'),
         fetch('/api/voice-notes'),
         fetch('/api/approver-kpis'),
         fetch('/api/inventory'),
         fetch('/api/whatsapp/status'),
-        fetch('/api/whatsapp/groups')
+        fetch('/api/whatsapp/groups'),
+        fetch('/api/inventory?trash=true')
       ]);
 
       if (pendingRes.ok) {
@@ -322,6 +337,10 @@ export default function App() {
         const machines = Array.from(new Set(inventoryData.map(item => item.machine).filter(Boolean))).sort();
         setUniqueInventoryMachines(machines);
         console.log('[Console Log] Master inventory catalog loaded successfully. Total records:', inventoryData.length);
+      }
+      if (trashRes && trashRes.ok) {
+        const trashData = await trashRes.json();
+        setTrashItems(trashData);
       }
       if (whatsappStatusRes && whatsappStatusRes.ok) {
         const statusData = await whatsappStatusRes.json();
@@ -603,12 +622,90 @@ export default function App() {
       if (response.ok) {
         setInventoryEditingId(null);
         setShowInventoryEditModal(false);
-
+        await fetchData();
       } else {
         alert('Failed to save inventory edits to database.');
       }
     } catch (err) {
       console.error('Error saving inventory edits:', err);
+    } finally {
+      setRefreshing(false);
+    }
+  };
+
+  // Recycle Bin Action Handlers
+  const handleSoftDeleteInventory = async (item) => {
+    try {
+      setRefreshing(true);
+      const response = await fetch(`/api/inventory/${item.id}/delete`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ role: currentUser?.role || 'Editor', user: currentUser?.username || 'Editor' })
+      });
+      if (response.ok) {
+        await fetchData();
+      } else {
+        alert('Failed to move item to Recycle Bin.');
+      }
+    } catch (err) {
+      console.error('Error moving item to Recycle Bin:', err);
+    } finally {
+      setRefreshing(false);
+    }
+  };
+
+  const handleRestoreInventory = async (item) => {
+    try {
+      setRefreshing(true);
+      const response = await fetch(`/api/inventory/${item.id}/restore`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+      });
+      if (response.ok) {
+        await fetchData();
+      } else {
+        alert('Failed to restore item.');
+      }
+    } catch (err) {
+      console.error('Error restoring item:', err);
+    } finally {
+      setRefreshing(false);
+    }
+  };
+
+  const handlePermanentDeleteInventory = async (item) => {
+    try {
+      setRefreshing(true);
+      const response = await fetch(`/api/inventory/${item.id}/permanent`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+      });
+      if (response.ok) {
+        await fetchData();
+      } else {
+        alert('Failed to permanently delete item.');
+      }
+    } catch (err) {
+      console.error('Error permanently deleting item:', err);
+    } finally {
+      setRefreshing(false);
+    }
+  };
+
+  const handleEmptyTrash = async () => {
+    try {
+      setRefreshing(true);
+      const response = await fetch('/api/inventory/empty-trash', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+      });
+      if (response.ok) {
+        await fetchData();
+      } else {
+        alert('Failed to empty Recycle Bin.');
+      }
+    } catch (err) {
+      console.error('Error emptying Recycle Bin:', err);
     } finally {
       setRefreshing(false);
     }
@@ -916,7 +1013,7 @@ export default function App() {
   const handlePartNameChange = (e) => setEditFormData({...editFormData, partName: e.target.value});
   const handleSkuChange = (e) => setEditFormData({...editFormData, sku: e.target.value});
 
-  const dashboardProps = { approvingId, forwardingId, receivingId, orderingId, handleToggleOrdered, loading, voiceNotes, exportStartDate, setExportStartDate, exportEndDate, setExportEndDate, exportToExcel, exportToPDF, printDemandList, customConfirm, availableGroups, handleToggleGroupActive,  activeTab, kpiData, filteredRequests, viewMode, currentPendingIndex, setCurrentPendingIndex, handleApprove, handleReject, handleForward, rejectingId, setRejectingId, rejectReason, setRejectReason, currentUserRole, inventoryItems, selectedInventoryMachine, setSelectedInventoryMachine, uniqueInventoryMachines, inventoryLoading, handleReceive, editingRowId, setEditingRowId, editFormData, setEditFormData, handleSaveInlineEdit, inventoryEditingId, setInventoryEditingId, inventoryEditFormData, setInventoryEditFormData, handleSaveInventoryEdit, showInventoryEditModal, setShowInventoryEditModal, handlePartNameChange, handleSkuChange, searchQuery, setSearchQuery, selectedMachine, setSelectedMachine, selectedVendor, setSelectedVendor, selectedStatus, setSelectedStatus, uniqueMachines, uniqueVendors, whatsappStatus, whatsappGroups, setWhatsappGroups, fetchWhatsappStatus, fetchWhatsappGroups, showCustomDemandModal, setShowCustomDemandModal, customDemandData, setCustomDemandData, submitCustomDemand, globalModal, setGlobalModal, handleClearFilters, filteredInventory, hasNoActiveGroups, setActiveTab, pendingRequests, apiLimitCount, apiLimitMax, setCurrentUserRole, setViewMode, fetchData, refreshing, setRefreshing, globalUniquePartNames, globalUniqueMaterials, globalUniqueMachines, globalUniqueVendors, globalUniqueSKUs, globalUniqueRegNos, globalUniqueSizes, globalUniqueUnits, handleCustomDemandPartNameChange, handleCustomDemandSkuChange, handleCustomDemandRegNoChange };
+  const dashboardProps = { approvingId, forwardingId, receivingId, orderingId, handleToggleOrdered, loading, voiceNotes, exportStartDate, setExportStartDate, exportEndDate, setExportEndDate, exportToExcel, exportToPDF, printDemandList, customConfirm, availableGroups, handleToggleGroupActive,  activeTab, kpiData, filteredRequests, viewMode, currentPendingIndex, setCurrentPendingIndex, handleApprove, handleReject, handleForward, rejectingId, setRejectingId, rejectReason, setRejectReason, currentUserRole, inventoryItems, selectedInventoryMachine, setSelectedInventoryMachine, uniqueInventoryMachines, inventoryLoading, handleReceive, editingRowId, setEditingRowId, editFormData, setEditFormData, handleSaveInlineEdit, inventoryEditingId, setInventoryEditingId, inventoryEditFormData, setInventoryEditFormData, handleSaveInventoryEdit, showInventoryEditModal, setShowInventoryEditModal, handlePartNameChange, handleSkuChange, searchQuery, setSearchQuery, selectedMachine, setSelectedMachine, selectedVendor, setSelectedVendor, selectedStatus, setSelectedStatus, uniqueMachines, uniqueVendors, whatsappStatus, whatsappGroups, setWhatsappGroups, fetchWhatsappStatus, fetchWhatsappGroups, showCustomDemandModal, setShowCustomDemandModal, customDemandData, setCustomDemandData, submitCustomDemand, globalModal, setGlobalModal, handleClearFilters, filteredInventory, hasNoActiveGroups, setActiveTab, pendingRequests, apiLimitCount, apiLimitMax, setCurrentUserRole, setViewMode, fetchData, refreshing, setRefreshing, globalUniquePartNames, globalUniqueMaterials, globalUniqueMachines, globalUniqueVendors, globalUniqueSKUs, globalUniqueRegNos, globalUniqueSizes, globalUniqueUnits, handleCustomDemandPartNameChange, handleCustomDemandSkuChange, handleCustomDemandRegNoChange, inventorySubTab, setInventorySubTab, trashItems, trashLoading, handleSoftDeleteInventory, handleRestoreInventory, handlePermanentDeleteInventory, handleEmptyTrash };
   return (
     <>
       {currentUserRole === 'observer' && <ManagerDashboard {...dashboardProps} />}

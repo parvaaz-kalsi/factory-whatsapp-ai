@@ -5,12 +5,12 @@ import DemandTable from './DemandTable';
 import PendingCard from './PendingCard';
 import RequestCard from './RequestCard';
 import { standardizeUnit } from '../../utils/unitStandardizer';
-import { FiRefreshCw, FiAlertTriangle, FiInfo, FiTrash2, FiClipboard, FiInbox, FiUser, FiDownload, FiPrinter } from 'react-icons/fi';
+import { FiRefreshCw, FiAlertTriangle, FiInfo, FiTrash2, FiClipboard, FiInbox, FiUser, FiDownload, FiPrinter, FiArchive, FiRotateCcw } from 'react-icons/fi';
 import MultiTagInput from './MultiTagInput';
 import IssueDemandsView from './IssueDemandsView';
 
 export default function DashboardContent(props) { // Force HMR reload
-  const { approvingId, forwardingId, receivingId, orderingId, loading, activeTab, kpiData, filteredRequests, viewMode, currentPendingIndex, setCurrentPendingIndex, handleApprove, handleReject, handleForward, rejectingId, setRejectingId, rejectReason, setRejectReason, currentUserRole, inventoryItems, selectedInventoryMachine, setSelectedInventoryMachine, uniqueInventoryMachines, inventoryLoading, handleReceive, handleToggleOrdered, editingRowId, setEditingRowId, editFormData, setEditFormData, handleSaveInlineEdit, inventoryEditingId, setInventoryEditingId, inventoryEditFormData, setInventoryEditFormData, handleSaveInventoryEdit, showInventoryEditModal, setShowInventoryEditModal, handlePartNameChange, handleSkuChange, searchQuery, setSearchQuery, selectedMachine, setSelectedMachine, selectedVendor, setSelectedVendor, selectedStatus, setSelectedStatus, uniqueMachines, uniqueVendors, whatsappStatus, whatsappGroups, setWhatsappGroups, fetchWhatsappStatus, fetchWhatsappGroups, showCustomDemandModal, setShowCustomDemandModal, customDemandData, setCustomDemandData, submitCustomDemand, globalModal, setGlobalModal, handleClearFilters, filteredInventory, hasNoActiveGroups, setActiveTab, pendingRequests, apiLimitCount, apiLimitMax, setCurrentUserRole, setViewMode, fetchData, refreshing, setRefreshing, globalUniquePartNames, globalUniqueMaterials, globalUniqueMachines, globalUniqueVendors, globalUniqueSKUs, globalUniqueRegNos, globalUniqueSizes, globalUniqueUnits, handleCustomDemandPartNameChange, handleCustomDemandSkuChange, handleCustomDemandRegNoChange, voiceNotes, exportStartDate, setExportStartDate, exportEndDate, setExportEndDate, exportToExcel, exportToPDF, printDemandList, customConfirm, availableGroups, handleToggleGroupActive } = props;
+  const { approvingId, forwardingId, receivingId, orderingId, loading, activeTab, kpiData, filteredRequests, viewMode, currentPendingIndex, setCurrentPendingIndex, handleApprove, handleReject, handleForward, rejectingId, setRejectingId, rejectReason, setRejectReason, currentUserRole, inventoryItems, selectedInventoryMachine, setSelectedInventoryMachine, uniqueInventoryMachines, inventoryLoading, handleReceive, handleToggleOrdered, editingRowId, setEditingRowId, editFormData, setEditFormData, handleSaveInlineEdit, inventoryEditingId, setInventoryEditingId, inventoryEditFormData, setInventoryEditFormData, handleSaveInventoryEdit, showInventoryEditModal, setShowInventoryEditModal, handlePartNameChange, handleSkuChange, searchQuery, setSearchQuery, selectedMachine, setSelectedMachine, selectedVendor, setSelectedVendor, selectedStatus, setSelectedStatus, uniqueMachines, uniqueVendors, whatsappStatus, whatsappGroups, setWhatsappGroups, fetchWhatsappStatus, fetchWhatsappGroups, showCustomDemandModal, setShowCustomDemandModal, customDemandData, setCustomDemandData, submitCustomDemand, globalModal, setGlobalModal, handleClearFilters, filteredInventory, hasNoActiveGroups, setActiveTab, pendingRequests, apiLimitCount, apiLimitMax, setCurrentUserRole, setViewMode, fetchData, refreshing, setRefreshing, globalUniquePartNames, globalUniqueMaterials, globalUniqueMachines, globalUniqueVendors, globalUniqueSKUs, globalUniqueRegNos, globalUniqueSizes, globalUniqueUnits, handleCustomDemandPartNameChange, handleCustomDemandSkuChange, handleCustomDemandRegNoChange, voiceNotes, exportStartDate, setExportStartDate, exportEndDate, setExportEndDate, exportToExcel, exportToPDF, printDemandList, customConfirm, availableGroups, handleToggleGroupActive, inventorySubTab = 'active', setInventorySubTab, trashItems = [], trashLoading, handleSoftDeleteInventory, handleRestoreInventory, handlePermanentDeleteInventory, handleEmptyTrash } = props;
 
   return (
     <>
@@ -71,6 +71,189 @@ export default function DashboardContent(props) { // Force HMR reload
           /* INVENTORY CATALOG VIEW */
           <div className="inventory-container" style={{ marginTop: '1rem', display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
             
+            {/* Inventory Navigation Sub-Tabs */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.75rem', borderBottom: '1px solid var(--border-medium)', paddingBottom: '0.75rem' }}>
+              <div style={{ display: 'flex', gap: '0.5rem' }}>
+                <button
+                  onClick={() => setInventorySubTab('active')}
+                  className="btn-refresh"
+                  style={{
+                    padding: '0.45rem 1rem',
+                    fontSize: '0.85rem',
+                    fontWeight: 600,
+                    borderRadius: '8px',
+                    backgroundColor: inventorySubTab === 'active' ? 'var(--accent-blue-bg)' : 'transparent',
+                    borderColor: inventorySubTab === 'active' ? '#bfdbfe' : 'var(--border-medium)',
+                    color: inventorySubTab === 'active' ? 'var(--accent-blue-text)' : 'var(--text-secondary)'
+                  }}
+                >
+                  <FiArchive size={14} style={{ marginRight: '0.35rem' }} /> Active Catalog ({filteredInventory.length})
+                </button>
+                <button
+                  onClick={() => setInventorySubTab('trash')}
+                  className="btn-refresh"
+                  style={{
+                    padding: '0.45rem 1rem',
+                    fontSize: '0.85rem',
+                    fontWeight: 600,
+                    borderRadius: '8px',
+                    backgroundColor: inventorySubTab === 'trash' ? '#fee2e2' : 'transparent',
+                    borderColor: inventorySubTab === 'trash' ? '#fca5a5' : 'var(--border-medium)',
+                    color: inventorySubTab === 'trash' ? '#b91c1c' : 'var(--text-secondary)'
+                  }}
+                >
+                  <FiTrash2 size={14} style={{ marginRight: '0.35rem' }} /> Recycle Bin ({trashItems.length})
+                </button>
+              </div>
+
+              {inventorySubTab === 'trash' && trashItems.length > 0 && (
+                <button
+                  onClick={async () => {
+                    if (await customConfirm('Empty Recycle Bin', `Are you sure you want to permanently delete all ${trashItems.length} items from the Recycle Bin? This action CANNOT be undone.`)) {
+                      setGlobalModal({ isOpen: false });
+                      await handleEmptyTrash();
+                    }
+                  }}
+                  className="btn-refresh"
+                  disabled={refreshing}
+                  style={{
+                    padding: '0.4rem 0.85rem',
+                    fontSize: '0.8rem',
+                    fontWeight: 600,
+                    backgroundColor: '#dc2626',
+                    borderColor: '#b91c1c',
+                    color: '#ffffff',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.35rem'
+                  }}
+                >
+                  <FiTrash2 size={13} /> Empty Recycle Bin
+                </button>
+              )}
+            </div>
+
+            {inventorySubTab === 'trash' ? (
+              /* RECYCLE BIN VIEW */
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                <div style={{
+                  backgroundColor: '#fef2f2',
+                  border: '1px solid #fee2e2',
+                  borderRadius: '8px',
+                  padding: '0.75rem 1rem',
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  gap: '1rem',
+                  flexWrap: 'wrap'
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#991b1b', fontSize: '0.85rem' }}>
+                    <FiTrash2 size={16} />
+                    <span><strong>Recycle Bin:</strong> These items are temporarily deleted and hidden from active inventory, dropdowns, and AI searches. You can restore them anytime or permanently delete them.</span>
+                  </div>
+                </div>
+
+                {trashItems.length === 0 ? (
+                  <div className="empty-state" style={{ padding: '3rem 1rem' }}>
+                    <FiTrash2 size={36} color="var(--text-muted)" style={{ marginBottom: '0.75rem' }} />
+                    <h3>Recycle Bin is Empty</h3>
+                    <p>No items have been moved to the Recycle Bin.</p>
+                  </div>
+                ) : (
+                  <div className="table-responsive" style={{
+                    backgroundColor: 'var(--bg-card)',
+                    borderRadius: '12px',
+                    border: '1px solid var(--border-light)',
+                    boxShadow: 'var(--shadow-sm)',
+                    overflowX: 'auto'
+                  }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontFamily: 'var(--font-sans)', fontSize: '0.9rem' }}>
+                      <thead>
+                        <tr style={{ backgroundColor: '#f8fafc', borderBottom: '1px solid var(--border-medium)' }}>
+                          <th style={{ padding: '1rem 1.25rem', fontWeight: 600, color: 'var(--text-secondary)' }}>Part Name</th>
+                          <th style={{ padding: '1rem 1.25rem', fontWeight: 600, color: 'var(--text-secondary)' }}>P. No.</th>
+                          <th style={{ padding: '1rem 1.25rem', fontWeight: 600, color: 'var(--text-secondary)' }}>Reg No.</th>
+                          <th style={{ padding: '1rem 1.25rem', fontWeight: 600, color: 'var(--text-secondary)' }}>Stock</th>
+                          <th style={{ padding: '1rem 1.25rem', fontWeight: 600, color: 'var(--text-secondary)' }}>Size / Specs</th>
+                          <th style={{ padding: '1rem 1.25rem', fontWeight: 600, color: 'var(--text-secondary)' }}>Machine</th>
+                          <th style={{ padding: '1rem 1.25rem', fontWeight: 600, color: 'var(--text-secondary)' }}>Deleted At (IST)</th>
+                          <th style={{ padding: '1rem 1.25rem', fontWeight: 600, color: 'var(--text-secondary)' }}>Deleted By</th>
+                          <th style={{ padding: '1rem 1.25rem', fontWeight: 600, color: 'var(--text-secondary)', textAlign: 'right' }}>Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {trashItems.map((item) => (
+                          <tr key={item.id} style={{ borderBottom: '1px solid var(--border-light)' }}>
+                            <td style={{ padding: '1rem 1.25rem', fontWeight: 600, color: 'var(--text-primary)' }}>{item.partName || 'Unnamed Item'}</td>
+                            <td style={{ padding: '1rem 1.25rem', fontFamily: 'monospace', fontWeight: 600, color: '#1d4ed8' }}>{item.sku || '—'}</td>
+                            <td style={{ padding: '1rem 1.25rem', color: 'var(--text-secondary)' }}>{item.regNo || '—'}</td>
+                            <td style={{ padding: '1rem 1.25rem', fontWeight: 500 }}>{item.stockQuantity} {item.unit || 'Pcs.'}</td>
+                            <td style={{ padding: '1rem 1.25rem', color: 'var(--text-secondary)' }}>{item.size || '—'}</td>
+                            <td style={{ padding: '1rem 1.25rem', color: 'var(--text-secondary)' }}>{item.machine || 'General'}</td>
+                            <td style={{ padding: '1rem 1.25rem', color: 'var(--text-secondary)', fontSize: '0.825rem' }}>
+                              {item.deletedAt ? new Date(item.deletedAt).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' }) : '—'}
+                            </td>
+                            <td style={{ padding: '1rem 1.25rem', color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
+                              <span style={{ backgroundColor: '#f1f5f9', padding: '0.2rem 0.5rem', borderRadius: '4px', fontWeight: 500 }}>{item.deletedBy || 'Editor'}</span>
+                            </td>
+                            <td style={{ padding: '1rem 1.25rem', textAlign: 'right', whiteSpace: 'nowrap' }}>
+                              <div style={{ display: 'inline-flex', gap: '0.4rem' }}>
+                                <button
+                                  onClick={async () => {
+                                    await handleRestoreInventory(item);
+                                  }}
+                                  className="btn-refresh"
+                                  disabled={refreshing}
+                                  style={{
+                                    padding: '0.35rem 0.75rem',
+                                    fontSize: '0.75rem',
+                                    fontWeight: 600,
+                                    backgroundColor: 'var(--accent-green-bg)',
+                                    borderColor: '#bbf7d0',
+                                    color: 'var(--accent-green-text)',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '0.25rem'
+                                  }}
+                                  title="Restore back to active inventory"
+                                >
+                                  <FiRotateCcw size={12} /> Restore
+                                </button>
+                                <button
+                                  onClick={async () => {
+                                    if (await customConfirm('Permanently Delete Item', `Are you sure you want to permanently delete "${item.partName || 'this item'}"? This will erase it completely from the database and CANNOT be undone.`)) {
+                                      setGlobalModal({ isOpen: false });
+                                      await handlePermanentDeleteInventory(item);
+                                    }
+                                  }}
+                                  className="btn-refresh"
+                                  disabled={refreshing}
+                                  style={{
+                                    padding: '0.35rem 0.6rem',
+                                    fontSize: '0.75rem',
+                                    fontWeight: 600,
+                                    backgroundColor: '#fee2e2',
+                                    borderColor: '#fca5a5',
+                                    color: '#dc2626',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '0.25rem'
+                                  }}
+                                  title="Permanently delete from database"
+                                >
+                                  <FiTrash2 size={12} /> Delete
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <>
             {/* Inventory Filters Row */}
             <div className="filter-dashboard" style={{ marginBottom: '1rem' }}>
               <div className="filter-group">
@@ -216,31 +399,47 @@ export default function DashboardContent(props) { // Force HMR reload
                                 {item.vendor || '—'}
                               </div>
                               
-                              <button
-                                onClick={() => {
-                                  setInventoryEditingId(item.id);
-                                  setInventoryEditFormData({
-                                    partName: item.partName || '',
-                                    sku: item.sku || '',
-                                    regNo: item.regNo || '',
-                                    stockQuantity: item.stockQuantity || '',
-                                    unit: item.unit || '',
-                                    size: item.size || '',
-                                    material: item.material || '',
-                                    category: item.category || '',
-                                    machine: item.machine || '',
-                                    vendor: item.vendor || '',
-                                    price: item.rate || item.price || ''
-                                  });
-                                  setShowInventoryEditModal(true);
-                                }}
-                                className="action-btn"
-                                style={{ padding: '0.35rem 0.6rem', minWidth: 'auto', backgroundColor: '#f1f5f9', color: '#64748b', border: '1px solid #cbd5e1', borderRadius: '6px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.3rem', fontSize: '0.75rem', fontWeight: 600 }}
-                                title="Edit"
-                              >
-                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
-                                Edit
-                              </button>
+                              <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'center' }}>
+                                <button
+                                  onClick={() => {
+                                    setInventoryEditingId(item.id);
+                                    setInventoryEditFormData({
+                                      partName: item.partName || '',
+                                      sku: item.sku || '',
+                                      regNo: item.regNo || '',
+                                      stockQuantity: item.stockQuantity || '',
+                                      unit: item.unit || '',
+                                      size: item.size || '',
+                                      material: item.material || '',
+                                      category: item.category || '',
+                                      machine: item.machine || '',
+                                      vendor: item.vendor || '',
+                                      price: item.rate || item.price || ''
+                                    });
+                                    setShowInventoryEditModal(true);
+                                  }}
+                                  className="action-btn"
+                                  style={{ padding: '0.35rem 0.6rem', minWidth: 'auto', backgroundColor: '#f1f5f9', color: '#64748b', border: '1px solid #cbd5e1', borderRadius: '6px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.3rem', fontSize: '0.75rem', fontWeight: 600 }}
+                                  title="Edit"
+                                >
+                                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
+                                  Edit
+                                </button>
+                                <button
+                                  onClick={async () => {
+                                    if (await customConfirm('Move to Recycle Bin', `Are you sure you want to move "${item.partName || 'this item'}" to the Recycle Bin? It will be hidden from active inventory and AI searches, but you can restore it anytime.`)) {
+                                      setGlobalModal({ isOpen: false });
+                                      await handleSoftDeleteInventory(item);
+                                    }
+                                  }}
+                                  className="action-btn"
+                                  style={{ padding: '0.35rem 0.5rem', minWidth: 'auto', backgroundColor: '#fee2e2', color: '#dc2626', border: '1px solid #fecaca', borderRadius: '6px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.25rem', fontSize: '0.75rem', fontWeight: 600 }}
+                                  title="Move to Recycle Bin"
+                                >
+                                  <FiTrash2 size={12} />
+                                  Delete
+                                </button>
+                              </div>
                             </div>
                       </div>
                     </div>
@@ -391,29 +590,44 @@ export default function DashboardContent(props) { // Force HMR reload
                                 </button>
                               </div>
                             ) : (
-                              <button
-                                onClick={() => {
-                                  setInventoryEditingId(item.id);
-                                  setInventoryEditFormData({
-                                    partName: item.partName || '',
-                                    sku: item.sku || '',
-                                    regNo: item.regNo || '',
-                                    stockQuantity: item.stockQuantity || '',
-                                    unit: item.unit || '',
-                                    size: item.size || '',
-                                    material: item.material || '',
-                                    category: item.category || '',
-                                    machine: item.machine || '',
-                                    vendor: item.vendor || '',
-                                    price: item.rate || item.price || ''
-                                  });
-                                }}
-                                className="action-btn"
-                                style={{ padding: '0.4rem', minWidth: 'auto', backgroundColor: '#f1f5f9', color: '#64748b', border: '1px solid #cbd5e1', borderRadius: '4px', cursor: 'pointer' }}
-                                title="Edit"
-                              >
-                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
-                              </button>
+                              <div style={{ display: 'flex', gap: '0.4rem', justifyContent: 'flex-end' }}>
+                                <button
+                                  onClick={() => {
+                                    setInventoryEditingId(item.id);
+                                    setInventoryEditFormData({
+                                      partName: item.partName || '',
+                                      sku: item.sku || '',
+                                      regNo: item.regNo || '',
+                                      stockQuantity: item.stockQuantity || '',
+                                      unit: item.unit || '',
+                                      size: item.size || '',
+                                      material: item.material || '',
+                                      category: item.category || '',
+                                      machine: item.machine || '',
+                                      vendor: item.vendor || '',
+                                      price: item.rate || item.price || ''
+                                    });
+                                  }}
+                                  className="action-btn"
+                                  style={{ padding: '0.4rem', minWidth: 'auto', backgroundColor: '#f1f5f9', color: '#64748b', border: '1px solid #cbd5e1', borderRadius: '4px', cursor: 'pointer' }}
+                                  title="Edit"
+                                >
+                                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
+                                </button>
+                                <button
+                                  onClick={async () => {
+                                    if (await customConfirm('Move to Recycle Bin', `Are you sure you want to move "${item.partName || 'this item'}" to the Recycle Bin? It will be hidden from active inventory and AI searches, but you can restore it anytime.`)) {
+                                      setGlobalModal({ isOpen: false });
+                                      await handleSoftDeleteInventory(item);
+                                    }
+                                  }}
+                                  className="action-btn"
+                                  style={{ padding: '0.4rem', minWidth: 'auto', backgroundColor: '#fee2e2', color: '#dc2626', border: '1px solid #fecaca', borderRadius: '4px', cursor: 'pointer' }}
+                                  title="Move to Recycle Bin"
+                                >
+                                  <FiTrash2 size={14} />
+                                </button>
+                              </div>
                             )}
                           </td>
                         </tr>
@@ -422,6 +636,8 @@ export default function DashboardContent(props) { // Force HMR reload
                   </tbody>
                 </table>
               </div>
+            )}
+              </>
             )}
           </div>
         ) : activeTab === 'whatsapp_settings' ? (

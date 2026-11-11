@@ -96,7 +96,14 @@ exports.getPending = async (req, res) => {
                 },
                 orderBy: { demand_timestamp: 'desc' }
             }),
-            prisma.inventory.findMany()
+            prisma.inventory.findMany({
+                where: {
+                    OR: [
+                        { is_deleted: false },
+                        { is_deleted: null }
+                    ]
+                }
+            })
         ]);
 
         const inventory = inventoryResult;
@@ -324,7 +331,11 @@ exports.approve = async (req, res) => {
         const itemCheck = await prisma.inventory.findFirst({
             where: { 
                 part_name: { equals: searchName, mode: 'insensitive' },
-                detail1: { equals: searchSize, mode: 'insensitive' }
+                detail1: { equals: searchSize, mode: 'insensitive' },
+                OR: [
+                    { is_deleted: false },
+                    { is_deleted: null }
+                ]
             }
         });
 
@@ -428,14 +439,20 @@ exports.receive = async (req, res) => {
         // 1. Try matching by SKU (P.No.) if provided and not placeholder
         if (dbRow.sku && dbRow.sku.trim() && dbRow.sku.trim() !== '—') {
             itemCheck = await prisma.inventory.findFirst({
-                where: { sku: { equals: dbRow.sku.trim(), mode: 'insensitive' } }
+                where: { 
+                    sku: { equals: dbRow.sku.trim(), mode: 'insensitive' },
+                    OR: [{ is_deleted: false }, { is_deleted: null }]
+                }
             });
         }
 
         // 2. Try matching by Reg No. if not found by SKU
         if (!itemCheck && dbRow.reg_no && dbRow.reg_no.trim() && dbRow.reg_no.trim() !== '—') {
             itemCheck = await prisma.inventory.findFirst({
-                where: { reg_no: { equals: dbRow.reg_no.trim(), mode: 'insensitive' } }
+                where: { 
+                    reg_no: { equals: dbRow.reg_no.trim(), mode: 'insensitive' },
+                    OR: [{ is_deleted: false }, { is_deleted: null }]
+                }
             });
         }
 
@@ -443,7 +460,10 @@ exports.receive = async (req, res) => {
         if (!itemCheck && dbRow.part_name && dbRow.part_name.trim()) {
             const searchName = dbRow.part_name.trim();
             const matchedByName = await prisma.inventory.findMany({
-                where: { part_name: { equals: searchName, mode: 'insensitive' } }
+                where: { 
+                    part_name: { equals: searchName, mode: 'insensitive' },
+                    OR: [{ is_deleted: false }, { is_deleted: null }]
+                }
             });
 
             if (matchedByName.length === 1) {

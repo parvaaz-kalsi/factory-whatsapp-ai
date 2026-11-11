@@ -3,28 +3,37 @@ const prisma = require('../config/db');
 // GET /api/inventory
 exports.getInventory = async (req, res) => {
     try {
-        const { machine } = req.query;
+        const { machine, trash } = req.query;
+        const isTrash = trash === 'true';
         let result;
 
-        console.log(`[Inventory API] Fetching live inventory. Filter: "${machine || 'none'}"`);
+        console.log(`[Inventory API] Fetching live inventory. Filter: "${machine || 'none'}", Trash: ${isTrash}`);
+
+        const whereCondition = isTrash 
+            ? { is_deleted: true }
+            : { OR: [{ is_deleted: false }, { is_deleted: null }] };
 
         if (machine && machine.trim() !== '') {
-            const filterPattern = `%${machine.trim()}%`;
-            // For ILIKE across multiple columns, Prisma has `contains` with `mode: 'insensitive'`
             const search = machine.trim();
             result = await prisma.inventory.findMany({
                 where: {
-                    OR: [
-                        { part_name: { contains: search, mode: 'insensitive' } },
-                        { part_group: { contains: search, mode: 'insensitive' } },
-                        { product_description: { contains: search, mode: 'insensitive' } }
+                    AND: [
+                        whereCondition,
+                        {
+                            OR: [
+                                { part_name: { contains: search, mode: 'insensitive' } },
+                                { part_group: { contains: search, mode: 'insensitive' } },
+                                { product_description: { contains: search, mode: 'insensitive' } }
+                            ]
+                        }
                     ]
                 },
-                orderBy: { part_name: 'asc' }
+                orderBy: isTrash ? { deleted_at: 'desc' } : { part_name: 'asc' }
             });
         } else {
             result = await prisma.inventory.findMany({
-                orderBy: { part_name: 'asc' }
+                where: whereCondition,
+                orderBy: isTrash ? { deleted_at: 'desc' } : { part_name: 'asc' }
             });
         }
 
@@ -41,10 +50,13 @@ exports.getInventory = async (req, res) => {
             regNo: row.reg_no || '—',
             price: row.price ? row.price.toString() : '0.00',
             rate: row.rate !== null ? row.rate.toString() : (row.price ? row.price.toString() : '0.00'),
-            vendor: row.vendor || '—'
+            vendor: row.vendor || '—',
+            isDeleted: row.is_deleted || false,
+            deletedAt: row.deleted_at,
+            deletedBy: row.deleted_by || ''
         }));
 
-        console.log(`[Inventory API] Returned ${items.length} matched inventory records.`);
+        console.log(`[Inventory API] Returned ${items.length} matched inventory records (trash=${isTrash}).`);
         res.json(items);
     } catch (err) {
         console.error('Error fetching live inventory from DB:', err);
@@ -158,5 +170,95 @@ exports.editInventoryItem = async (req, res) => {
         }
         console.error('Error editing inventory item:', err);
         res.status(500).json({ error: 'Failed to edit inventory item' });
+    }
+};
+
+// POST /api/inventory/:id/delete (Soft Delete -> Move to Recycle Bin)
+exports.deleteInventoryItem = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const deletedBy = req.body.deletedBy || req.body.role || 'Editor';
+
+        const result = await prisma.inventory.update({
+            where: { id: parseInt(id) },
+            data: {
+                is_deleted: true,
+                deleted_at: new Date(),
+                deleted_by: deletedBy
+            }
+        });
+
+        console.log(`[Inventory Recycle Bin] Item "${result.part_name}" (ID: ${id}) moved to Recycle Bin by ${deletedBy}`);
+        if (global.io) global.io.emit('dashboard_update');
+        res.json({ success: true, message: 'Item moved to Recycle Bin', item: result });
+    } catch (err) {
+        if (err.code === 'P2025') {
+            return res.status(404).json({ error: 'Inventory item not found' });
+        }
+        console.error('Error moving item to Recycle Bin:', err);
+        res.status(500).json({ error: 'Failed to move item to Recycle Bin' });
+    }
+};
+
+// POST /api/inventory/:id/restore (Restore from Recycle Bin)
+exports.restoreInventoryItem = async (req, res) => {
+    try {
+        const { id } = req.params;
+
+        const result = await prisma.inventory.update({
+            where: { id: parseInt(id) },
+            data: {
+                is_deleted: false,
+                deleted_at: null,
+                deleted_by: null
+            }
+        });
+
+        console.log(`[Inventory Recycle Bin] Item "${result.part_name}" (ID: ${id}) restored to active inventory`);
+        if (global.io) global.io.emit('dashboard_update');
+        res.json({ success: true, message: 'Item restored to active inventory', item: result });
+    } catch (err) {
+        if (err.code === 'P2025') {
+            return res.status(404).json({ error: 'Inventory item not found' });
+        }
+        console.error('Error restoring inventory item:', err);
+        res.status(500).json({ error: 'Failed to restore inventory item' });
+    }
+};
+
+// DELETE or POST /api/inventory/:id/permanent (Permanent Hard Delete)
+exports.permanentDeleteInventoryItem = async (req, res) => {
+    try {
+        const { id } = req.params;
+
+        const result = await prisma.inventory.delete({
+            where: { id: parseInt(id) }
+        });
+
+        console.log(`[Inventory Permanent Delete] Item "${result.part_name}" (ID: ${id}) permanently removed from database`);
+        if (global.io) global.io.emit('dashboard_update');
+        res.json({ success: true, message: 'Item permanently deleted from database' });
+    } catch (err) {
+        if (err.code === 'P2025') {
+            return res.status(404).json({ error: 'Inventory item not found' });
+        }
+        console.error('Error permanently deleting inventory item:', err);
+        res.status(500).json({ error: 'Failed to permanently delete inventory item' });
+    }
+};
+
+// POST /api/inventory/empty-trash (Empty all items in Recycle Bin)
+exports.emptyTrash = async (req, res) => {
+    try {
+        const result = await prisma.inventory.deleteMany({
+            where: { is_deleted: true }
+        });
+
+        console.log(`[Inventory Recycle Bin] Purged ${result.count} items from Recycle Bin`);
+        if (global.io) global.io.emit('dashboard_update');
+        res.json({ success: true, count: result.count, message: `Permanently removed ${result.count} items` });
+    } catch (err) {
+        console.error('Error emptying Recycle Bin:', err);
+        res.status(500).json({ error: 'Failed to empty Recycle Bin' });
     }
 };
