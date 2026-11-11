@@ -41,7 +41,7 @@ export default function Topbar({
             </svg>
             <input
               type="text"
-              placeholder={activeTab === 'inventory' ? 'Search part name, category, SKU...' : 'Search parts, size, machine...'}
+              placeholder={activeTab === 'inventory' ? 'Search part name, category, P. No...' : 'Search parts, size, machine...'}
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
             />

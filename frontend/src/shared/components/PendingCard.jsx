@@ -194,7 +194,7 @@ export default function PendingCard({ item, voiceNotes = [], currentUserRole, on
 
   const handleSkuChange = (e) => {
     const val = e.target.value;
-    console.log('[Console Log - PendingCard] Selected SKU (P No.):', val);
+    console.log('[Console Log - PendingCard] Selected P. No.:', val);
     setFormData(prev => ({ ...prev, sku: val }));
   };
 
@@ -211,15 +211,36 @@ export default function PendingCard({ item, voiceNotes = [], currentUserRole, on
       const response = await fetch(`/api/pending/${item.id}/edit`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(formData)
+        body: JSON.stringify({ ...formData, role: currentUserRole })
       });
       if (response.ok) {
         setIsEditing(false);
         if (activeTab === 'receiving' && onReceive) {
-           onReceive(item.id);
+           await onReceive(item.id, formData);
         } else {
            window.location.reload();
         }
+      } else {
+        alert('Failed to save edits to database.');
+      }
+    } catch (err) {
+      console.error('Error saving edits:', err);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleSaveOnly = async () => {
+    setIsSaving(true);
+    try {
+      const response = await fetch(`/api/pending/${item.id}/edit`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...formData, role: currentUserRole })
+      });
+      if (response.ok) {
+        setIsEditing(false);
+        window.location.reload();
       } else {
         alert('Failed to save edits to database.');
       }
@@ -378,7 +399,7 @@ export default function PendingCard({ item, voiceNotes = [], currentUserRole, on
             
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
               <div>
-                <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)' }}>P No. (SKU)</label>
+                <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)' }}>P. No.</label>
                 <input
                   type="text"
                   name="sku"
@@ -537,9 +558,20 @@ export default function PendingCard({ item, voiceNotes = [], currentUserRole, on
                   <><FiRefreshCw size={14} style={{ animation: 'spin 1s linear infinite', marginRight: '0.35rem' }} /> Processing...</>
                 ) : activeTab === 'receiving' ? 'Confirm & Mark as Received' : 'Save'}
               </button>
+              {activeTab === 'receiving' && (
+                <button 
+                  className="btn-refresh" 
+                  disabled={isSaving}
+                  style={{ padding: '0.4rem 0.6rem', fontSize: '0.8rem', justifyContent: 'center', borderColor: '#bfdbfe', color: 'var(--accent-blue-text)' }} 
+                  onClick={handleSaveOnly}
+                  title="Save edits without marking as received yet"
+                >
+                  Save Only
+                </button>
+              )}
               <button 
                 className="btn-refresh" 
-                style={{ flexGrow: 1, padding: '0.4rem', fontSize: '0.8rem', justifyContent: 'center', borderColor: '#fecaca', color: '#dc2626' }} 
+                style={{ flexGrow: activeTab === 'receiving' ? 0 : 1, padding: '0.4rem', fontSize: '0.8rem', justifyContent: 'center', borderColor: '#fecaca', color: '#dc2626' }} 
                 onClick={handleCancelEdit}
               >
                 Cancel
@@ -705,7 +737,7 @@ export default function PendingCard({ item, voiceNotes = [], currentUserRole, on
 
             <div className="specs-list">
               <div className="spec-item">
-                <span className="spec-label">P No. (SKU)</span>
+                <span className="spec-label">P. No.</span>
                 <span className="spec-val" style={{ fontFamily: 'monospace', fontWeight: 600, color: '#1d4ed8' }}>{formData.sku || '—'}</span>
               </div>
               <div className="spec-item">
@@ -801,8 +833,33 @@ export default function PendingCard({ item, voiceNotes = [], currentUserRole, on
                         fontSize: '0.85rem',
                         padding: '0.55rem',
                       }}
+                      title="Edit any details and parameters before receiving"
                     >
-                      Review & Receive
+                      Review & Edit
+                    </button>
+                    <button 
+                      onClick={() => onReceive(item.id)}
+                      disabled={receivingId === item.id}
+                      className="btn-refresh"
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '0.35rem',
+                        flexGrow: 1,
+                        justifyContent: 'center',
+                        backgroundColor: 'var(--accent-green-bg)',
+                        borderColor: '#bbf7d0',
+                        color: 'var(--accent-green-text)',
+                        fontWeight: 600,
+                        fontSize: '0.85rem',
+                        padding: '0.55rem',
+                        opacity: receivingId === item.id ? 0.7 : 1
+                      }}
+                      title="Directly receive into inventory as-is"
+                    >
+                      {receivingId === item.id ? (
+                        <><FiRefreshCw size={14} style={{ animation: 'spin 1s linear infinite' }} /> Receiving...</>
+                      ) : 'Quick Receive'}
                     </button>
                     <button 
                       onClick={() => onReject(item.id)}
@@ -812,14 +869,13 @@ export default function PendingCard({ item, voiceNotes = [], currentUserRole, on
                         display: 'flex',
                         alignItems: 'center',
                         gap: '0.35rem',
-                        flexGrow: 1,
+                        padding: '0.55rem 0.75rem',
                         justifyContent: 'center',
                         backgroundColor: 'var(--accent-rose-bg)',
                         borderColor: '#fecaca',
                         color: 'var(--accent-rose-text)',
                         fontWeight: 600,
                         fontSize: '0.85rem',
-                        padding: '0.55rem',
                         opacity: rejectingId === item.id ? 0.7 : 1
                       }}
                     >
@@ -963,8 +1019,8 @@ export default function PendingCard({ item, voiceNotes = [], currentUserRole, on
 
               <div className="inv-form-row">
                 <div className="inv-form-field">
-                  <label>SKU / P No.</label>
-                  <input type="text" name="sku" value={inventoryFormData.sku} onChange={handleInventoryFormChange} placeholder="Auto-generated if blank" />
+                  <label>P. No.</label>
+                  <input type="text" name="sku" value={inventoryFormData.sku} onChange={handleInventoryFormChange} placeholder="Optional P. No." />
                 </div>
                 <div className="inv-form-field">
                   <label>Reg No.</label>

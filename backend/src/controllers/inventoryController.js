@@ -77,18 +77,18 @@ exports.addInventoryItem = async (req, res) => {
             return res.status(400).json({ error: 'Part Name is required' });
         }
 
-        // Generate a SKU if none provided
-        const finalSku = (sku && sku.trim())
-            ? sku.trim()
-            : 'GEN-' + partName.trim().substring(0, 5).toUpperCase().replace(/[^A-Z0-9]/g, '') + '-' + Math.floor(Math.random() * 10000);
+        // Use provided P.No. or leave empty
+        const finalSku = (sku && sku.trim() && sku.trim() !== '—') ? sku.trim() : '';
 
-        // Check for duplicate SKU
-        const existing = await prisma.inventory.findFirst({
-            where: { sku: finalSku }
-        });
+        // Check for duplicate P.No. if provided
+        if (finalSku) {
+            const existing = await prisma.inventory.findFirst({
+                where: { sku: finalSku }
+            });
 
-        if (existing) {
-            return res.status(409).json({ error: `An inventory item with SKU "${finalSku}" already exists.` });
+            if (existing) {
+                return res.status(409).json({ error: `An inventory item with P.No. "${finalSku}" already exists.` });
+            }
         }
 
         const parsedPrice = parseFloat(price) || 0.00;
@@ -111,7 +111,7 @@ exports.addInventoryItem = async (req, res) => {
             }
         });
 
-        console.log(`[Inventory] New item added: "${partName}" (SKU: ${finalSku})`);
+        console.log(`[Inventory] New item added: "${partName}" (P.No.: ${finalSku || 'none'})`);
         res.json({ success: true, item: result });
     } catch (err) {
         console.error('Error adding inventory item:', err);

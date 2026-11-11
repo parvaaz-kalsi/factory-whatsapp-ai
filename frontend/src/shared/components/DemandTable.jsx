@@ -87,7 +87,7 @@ export default function DemandTable(props) {
 
   const handleSkuChange = (e) => {
     const val = e.target.value;
-    console.log('[Console Log - List View Edit] Selected SKU (P No.):', val);
+    console.log('[Console Log - List View Edit] Selected P. No.:', val);
     setEditFormData(prev => ({ ...prev, sku: val }));
   };
 
@@ -173,7 +173,7 @@ export default function DemandTable(props) {
                   </span>
                 </td>
 
-                {/* P No. / SKU */}
+                {/* P. No. */}
                 <td style={{ padding: '1rem 1.25rem', fontFamily: 'monospace', fontWeight: 600, color: '#1d4ed8' }}>
                   {isEditingRow ? (
                     <input 
@@ -413,6 +413,50 @@ export default function DemandTable(props) {
                           <><FiRefreshCw size={12} style={{ animation: 'spin 1s linear infinite' }} /> Processing</>
                         ) : item.isOrdered ? <><FiCheck size={12} /> Ordered</> : 'Mark as Ordered'}
                       </button>
+                    ) : isEditingRow ? (
+                      <div style={{ display: 'inline-flex', gap: '0.35rem' }}>
+                        {activeTab === 'receiving' ? (
+                          <>
+                            <button 
+                              className="btn-refresh" 
+                              disabled={receivingId === item.id}
+                              style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', padding: '0.3rem 0.6rem', fontSize: '0.75rem', backgroundColor: 'var(--accent-green-bg)', borderColor: '#bbf7d0', color: 'var(--accent-green-text)', fontWeight: 600, opacity: receivingId === item.id ? 0.7 : 1 }} 
+                              onClick={async () => {
+                                await handleReceive(item.id, editFormData);
+                                setEditingRowId(null);
+                              }}
+                              title="Save all changes and mark as received into inventory"
+                            >
+                              {receivingId === item.id ? (
+                                <><FiRefreshCw size={12} style={{ animation: 'spin 1s linear infinite' }} /> Receiving</>
+                              ) : 'Save & Receive'}
+                            </button>
+                            <button 
+                              className="btn-refresh" 
+                              style={{ padding: '0.3rem 0.6rem', fontSize: '0.75rem', backgroundColor: 'var(--accent-blue-bg)', borderColor: '#bfdbfe', color: 'var(--accent-blue-text)' }} 
+                              onClick={() => handleSaveInlineEdit(item.id)}
+                              title="Save changes without receiving yet"
+                            >
+                              Save Only
+                            </button>
+                          </>
+                        ) : (
+                          <button 
+                            className="btn-refresh" 
+                            style={{ padding: '0.3rem 0.6rem', fontSize: '0.75rem', backgroundColor: 'var(--accent-green-bg)', borderColor: '#bbf7d0', color: 'var(--accent-green-text)' }} 
+                            onClick={() => handleSaveInlineEdit(item.id)}
+                          >
+                            Save
+                          </button>
+                        )}
+                        <button 
+                          className="btn-refresh" 
+                          style={{ padding: '0.3rem 0.6rem', fontSize: '0.75rem', borderColor: '#fecaca', color: '#dc2626' }} 
+                          onClick={() => setEditingRowId(null)}
+                        >
+                          Cancel
+                        </button>
+                      </div>
                     ) : activeTab === 'receiving' ? (
                       <div style={{ display: 'inline-flex', gap: '0.35rem' }}>
                         <button 
@@ -420,10 +464,34 @@ export default function DemandTable(props) {
                           disabled={receivingId === item.id}
                           style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', padding: '0.3rem 0.6rem', fontSize: '0.75rem', backgroundColor: 'var(--accent-green-bg)', borderColor: '#bbf7d0', color: 'var(--accent-green-text)', fontWeight: 600, opacity: receivingId === item.id ? 0.7 : 1 }}
                           onClick={() => handleReceive(item.id)}
+                          title="Mark as received into inventory with current details"
                         >
                           {receivingId === item.id ? (
                             <><FiRefreshCw size={12} style={{ animation: 'spin 1s linear infinite' }} /> Processing</>
                           ) : 'Mark as Received'}
+                        </button>
+                        <button 
+                          className="btn-refresh" 
+                          style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', padding: '0.3rem 0.6rem', fontSize: '0.75rem', color: 'var(--accent-blue-text)', borderColor: '#bfdbfe' }} 
+                          onClick={() => {
+                            setEditingRowId(item.id);
+                            setEditFormData({
+                              partName: item.partName || '',
+                              sku: item.sku || '',
+                              regNo: item.regNo || '',
+                              qty: displayQty(item.qty, item.unit),
+                              unit: displayUnit(item.qty, item.unit),
+                              size: item.size || '',
+                              material: item.material || '',
+                              machine: item.machine || '',
+                              category: item.category || '',
+                              vendor: item.vendor || '',
+                              price: item.price || item.rate || ''
+                            });
+                          }}
+                          title="Edit any parameters (P.No, Reg No, Vendor, Price, Size, etc.)"
+                        >
+                          <FiEdit2 size={12} /> Edit
                         </button>
                         <button 
                           className="btn-refresh" 
@@ -436,23 +504,6 @@ export default function DemandTable(props) {
                           ) : 'Reject'}
                         </button>
                       </div>
-                    ) : isEditingRow ? (
-                      <div style={{ display: 'inline-flex', gap: '0.35rem' }}>
-                        <button 
-                          className="btn-refresh" 
-                          style={{ padding: '0.3rem 0.6rem', fontSize: '0.75rem', backgroundColor: 'var(--accent-green-bg)', borderColor: '#bbf7d0', color: 'var(--accent-green-text)' }} 
-                          onClick={() => handleSaveInlineEdit(item.id)}
-                        >
-                          Save
-                        </button>
-                        <button 
-                          className="btn-refresh" 
-                          style={{ padding: '0.3rem 0.6rem', fontSize: '0.75rem', borderColor: '#fecaca', color: '#dc2626' }} 
-                          onClick={() => setEditingRowId(null)}
-                        >
-                          Cancel
-                        </button>
-                      </div>
                     ) : (
                       <div style={{ display: 'inline-flex', gap: '0.35rem' }}>
                         {/* Edit Button */}
@@ -463,6 +514,8 @@ export default function DemandTable(props) {
                             setEditingRowId(item.id);
                             setEditFormData({
                               partName: item.partName || '',
+                              sku: item.sku || '',
+                              regNo: item.regNo || '',
                               qty: displayQty(item.qty, item.unit),
                               unit: displayUnit(item.qty, item.unit),
                               size: item.size || '',

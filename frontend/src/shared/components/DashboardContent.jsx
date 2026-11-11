@@ -169,7 +169,7 @@ export default function DashboardContent(props) { // Force HMR reload
                             
                             <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginBottom: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.35rem', flexWrap: 'wrap' }}>
                               <span style={{ fontFamily: 'monospace', fontWeight: 600, color: '#1d4ed8', backgroundColor: '#eff6ff', padding: '0.15rem 0.4rem', borderRadius: '4px' }}>
-                                {item.sku || 'GEN-SKU'}
+                                {item.sku || '—'}
                               </span>
                               <span style={{ color: 'var(--text-muted)' }}>|</span>
                               <span>Reg No: <strong>{item.regNo || '—'}</strong></span>
@@ -942,7 +942,7 @@ export default function DashboardContent(props) { // Force HMR reload
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
                 <div>
-                  <label style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-secondary)', display: 'block', marginBottom: '0.25rem' }}>P No. (SKU)</label>
+                  <label style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-secondary)', display: 'block', marginBottom: '0.25rem' }}>P. No.</label>
                   <input type="text" list="custom-demand-skus" className="filter-select" style={{ width: '100%' }} value={customDemandData.sku} onChange={handleCustomDemandSkuChange} placeholder="e.g. PN-123" />
                   <datalist id="custom-demand-skus">
                     {globalUniqueSKUs.map(sku => <option key={sku} value={sku} />)}
@@ -1038,7 +1038,7 @@ export default function DashboardContent(props) { // Force HMR reload
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
                 <div>
-                  <label style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-secondary)', display: 'block', marginBottom: '0.25rem' }}>P No. (SKU)</label>
+                  <label style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-secondary)', display: 'block', marginBottom: '0.25rem' }}>P. No.</label>
                   <input type="text" className="filter-select" style={{ width: '100%' }} value={inventoryEditFormData.sku} onChange={e => setInventoryEditFormData({...inventoryEditFormData, sku: e.target.value})} />
                 </div>
                 <div>

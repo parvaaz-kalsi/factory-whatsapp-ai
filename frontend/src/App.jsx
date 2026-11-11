@@ -446,15 +446,18 @@ export default function App() {
 
   // Handle Receive Action
   const [receivingId, setReceivingId] = useState(null);
-  const handleReceive = async (id) => {
+  const handleReceive = async (id, updatedData = null) => {
     try {
       setReceivingId(id);
       setRefreshing(true);
-      const response = await fetch(`/api/pending/${id}/receive`, {
-        method: 'POST'
-      });
+      const options = { method: 'POST' };
+      if (updatedData) {
+        options.headers = { 'Content-Type': 'application/json' };
+        options.body = JSON.stringify(updatedData);
+      }
+      const response = await fetch(`/api/pending/${id}/receive`, options);
       if (response.ok) {
-
+        await fetchData();
       } else {
         alert('Failed to mark request as received.');
       }
@@ -568,7 +571,7 @@ export default function App() {
       });
       if (response.ok) {
         setEditingRowId(null);
-
+        await fetchData();
       } else {
         alert('Failed to save edits to database.');
       }

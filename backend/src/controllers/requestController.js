@@ -278,9 +278,8 @@ exports.approve = async (req, res) => {
         });
 
         if (!itemCheck) {
-            const cleanName = partNameToCheck.trim().substring(0, 5).toUpperCase().replace(/[^A-Z0-9]/g, '');
-            const generatedSku = 'GEN-' + cleanName + '-' + Math.floor(Math.random() * 10000);
             const parsedPrice = parseFloat(approvedData.price || approvedData.rate || dbRow.rate || '0') || 0.00;
+            const finalPNo = (approvedData.sku || dbRow.sku || '').trim();
 
             await prisma.inventory.create({
                 data: {
@@ -289,7 +288,7 @@ exports.approve = async (req, res) => {
                     material: approvedData.material || dbRow.material || '',
                     detail1: approvedData.size || dbRow.size || '',
                     detail2: '',
-                    sku: approvedData.sku || generatedSku,
+                    sku: (finalPNo && finalPNo !== '—') ? finalPNo : '',
                     reg_no: approvedData.regNo || dbRow.reg_no || '',
                     vendor: approvedData.vendor || dbRow.vendor || '',
                     available_qty: 0,
@@ -317,36 +316,149 @@ exports.receive = async (req, res) => {
     try {
         const { id } = req.params;
 
-        const dbRow = await prisma.pending_requests.findUnique({ where: { id } });
+        let dbRow = await prisma.pending_requests.findUnique({ where: { id } });
         if (!dbRow) return res.status(404).json({ error: 'Request not found' });
 
+        // If request body contains updated parameters from the receiver, save them first
+        if (req.body && Object.keys(req.body).length > 0) {
+            const b = req.body;
+            await prisma.pending_requests.update({
+                where: { id },
+                data: {
+                    part_name: (b.partName !== undefined ? b.partName : dbRow.part_name) || '',
+                    sku: (b.sku !== undefined ? b.sku : dbRow.sku) || '',
+                    reg_no: (b.regNo !== undefined ? b.regNo : dbRow.reg_no) || '',
+                    qty: (b.qty !== undefined ? String(b.qty) : dbRow.qty) || '',
+                    unit: (b.unit !== undefined ? b.unit : dbRow.unit) || '',
+                    size: (b.size !== undefined ? b.size : dbRow.size) || '',
+                    material: (b.material !== undefined ? b.material : dbRow.material) || '',
+                    machine: (b.machine !== undefined ? b.machine : dbRow.machine) || '',
+                    category: (b.category !== undefined ? b.category : dbRow.category) || '',
+                    vendor: (b.vendor !== undefined ? b.vendor : dbRow.vendor) || '',
+                    rate: (b.price !== undefined ? String(b.price) : (b.rate !== undefined ? String(b.rate) : dbRow.rate)) || '',
+                    edited_by: 'Receiver',
+                    edited_at: new Date()
+                }
+            });
+            dbRow = await prisma.pending_requests.findUnique({ where: { id } });
+        }
+
+        // Mark demand as received
         await prisma.pending_requests.update({
             where: { id },
-            data: { status: 'received' }
+            data: { status: 'received', received_at: new Date() }
         });
 
-        // Increase inventory stock quantity
-        const partNameToCheck = dbRow.part_name || '';
-        const searchName = partNameToCheck.trim();
-        const sizeToCheck = dbRow.size || '';
-        const searchSize = sizeToCheck.trim();
-        const itemCheck = await prisma.inventory.findFirst({
-            where: { 
-                part_name: { equals: searchName, mode: 'insensitive' },
-                detail1: { equals: searchSize, mode: 'insensitive' }
-            }
-        });
-        
+        // Parse received quantity
         const receivedQtyNum = parseInt((dbRow.qty || '').replace(/[^0-9]/g, ''), 10) || 0;
 
+        // Parse price / rate
+        const rawPriceStr = String(dbRow.rate || dbRow.price || '').replace(/[^0-9.]/g, '');
+        const parsedPrice = parseFloat(rawPriceStr) || 0.00;
+
+        // Robust matching to check if item already exists in inventory
+        let itemCheck = null;
+
+        // 1. Try matching by SKU (P.No.) if provided and not placeholder
+        if (dbRow.sku && dbRow.sku.trim() && dbRow.sku.trim() !== '—') {
+            itemCheck = await prisma.inventory.findFirst({
+                where: { sku: { equals: dbRow.sku.trim(), mode: 'insensitive' } }
+            });
+        }
+
+        // 2. Try matching by Reg No. if not found by SKU
+        if (!itemCheck && dbRow.reg_no && dbRow.reg_no.trim() && dbRow.reg_no.trim() !== '—') {
+            itemCheck = await prisma.inventory.findFirst({
+                where: { reg_no: { equals: dbRow.reg_no.trim(), mode: 'insensitive' } }
+            });
+        }
+
+        // 3. Try matching by Part Name (case-insensitive)
+        if (!itemCheck && dbRow.part_name && dbRow.part_name.trim()) {
+            const searchName = dbRow.part_name.trim();
+            const matchedByName = await prisma.inventory.findMany({
+                where: { part_name: { equals: searchName, mode: 'insensitive' } }
+            });
+
+            if (matchedByName.length === 1) {
+                itemCheck = matchedByName[0];
+            } else if (matchedByName.length > 1) {
+                // If multiple parts share the same name, disambiguate with size or SKU
+                const searchSize = (dbRow.size || '').trim().toLowerCase();
+                const matchedBySize = matchedByName.find(i => 
+                    (i.detail1 && searchSize && i.detail1.toLowerCase() === searchSize) ||
+                    (i.detail1 && searchSize && searchSize.includes(i.detail1.toLowerCase())) ||
+                    (i.sku && dbRow.sku && i.sku.toLowerCase() === dbRow.sku.toLowerCase())
+                );
+                itemCheck = matchedBySize || matchedByName[0];
+            }
+        }
+
         if (itemCheck) {
+            // ITEM EXISTS: Increase stock quantity AND synchronize all updated parameters
             const currentQty = itemCheck.available_qty || 0;
             const newQty = currentQty + receivedQtyNum;
+
+            const updateData = {
+                available_qty: newQty,
+                part_name: (dbRow.part_name || itemCheck.part_name || '').trim(),
+                price: parsedPrice > 0 ? parsedPrice : (itemCheck.price ? Number(itemCheck.price) : 0.00),
+                rate: parsedPrice > 0 ? parsedPrice : (itemCheck.rate ? Number(itemCheck.rate) : (itemCheck.price ? Number(itemCheck.price) : 0.00))
+            };
+
+            if (dbRow.sku && dbRow.sku.trim() && dbRow.sku.trim() !== '—') {
+                updateData.sku = dbRow.sku.trim();
+            }
+            if (dbRow.reg_no && dbRow.reg_no.trim() && dbRow.reg_no.trim() !== '—') {
+                updateData.reg_no = dbRow.reg_no.trim();
+            }
+            if (dbRow.size && dbRow.size.trim() && dbRow.size.trim() !== '—') {
+                updateData.detail1 = dbRow.size.trim();
+            }
+            if (dbRow.material && dbRow.material.trim() && dbRow.material.trim() !== '—') {
+                updateData.material = dbRow.material.trim();
+            }
+            if (dbRow.machine && dbRow.machine.trim() && dbRow.machine.trim() !== 'General Compatibility') {
+                updateData.part_group = dbRow.machine.trim();
+            }
+            if (dbRow.vendor && dbRow.vendor.trim() && dbRow.vendor.trim() !== '—') {
+                updateData.vendor = dbRow.vendor.trim();
+            }
+            if (dbRow.category && dbRow.category.trim() && dbRow.category.trim() !== '—') {
+                updateData.category = dbRow.category.trim();
+            }
+            if (dbRow.unit && dbRow.unit.trim()) {
+                updateData.unit = dbRow.unit.trim();
+            }
+
             await prisma.inventory.update({
                 where: { id: itemCheck.id },
-                data: { available_qty: newQty }
+                data: updateData
             });
-            console.log(`[Inventory Stock Update] Increased stock of "${partNameToCheck}" from ${currentQty} to ${newQty}`);
+            console.log(`[Inventory Stock & Param Update] Updated "${updateData.part_name}" (ID: ${itemCheck.id}), Stock: ${currentQty} -> ${newQty}`);
+        } else {
+            // ITEM DOES NOT EXIST: Create a new inventory record with the demand's details & quantity
+            const finalSku = (dbRow.sku && dbRow.sku.trim() && dbRow.sku.trim() !== '—')
+                ? dbRow.sku.trim()
+                : '';
+
+            const newInventoryItem = await prisma.inventory.create({
+                data: {
+                    part_name: (dbRow.part_name || 'Unnamed Item').trim(),
+                    sku: finalSku,
+                    reg_no: (dbRow.reg_no && dbRow.reg_no.trim() !== '—' ? dbRow.reg_no.trim() : '').trim(),
+                    detail1: (dbRow.size && dbRow.size.trim() !== '—' ? dbRow.size.trim() : '').trim(),
+                    material: (dbRow.material && dbRow.material.trim() !== '—' ? dbRow.material.trim() : '').trim(),
+                    part_group: (dbRow.machine && dbRow.machine.trim() !== 'General' ? dbRow.machine.trim() : 'General Compatibility').trim(),
+                    vendor: (dbRow.vendor && dbRow.vendor.trim() !== '—' ? dbRow.vendor.trim() : '').trim(),
+                    unit: (dbRow.unit && dbRow.unit.trim() ? dbRow.unit.trim() : 'Pcs.').trim(),
+                    category: (dbRow.category && dbRow.category.trim() !== '—' ? dbRow.category.trim() : 'mechanical').trim(),
+                    price: parsedPrice,
+                    rate: parsedPrice,
+                    available_qty: receivedQtyNum
+                }
+            });
+            console.log(`[Inventory Creation] Created new inventory item "${newInventoryItem.part_name}" (P.No.: ${finalSku || 'none'}), Stock: ${receivedQtyNum}`);
         }
 
         // Write to Google Sheets
@@ -358,7 +470,7 @@ exports.receive = async (req, res) => {
         };
         await appendToSheet(finalReceivedRow);
 
-        console.log('Received demand written to sheet and stock updated:', finalReceivedRow.partName);
+        console.log('Received demand written to sheet and inventory updated:', finalReceivedRow.partName);
         if (global.io) global.io.emit('dashboard_update');
         res.json({ success: true });
     } catch (err) {
@@ -376,13 +488,13 @@ exports.edit = async (req, res) => {
         const editData = req.body;
         if (!editData) return res.status(400).json({ error: 'Empty edit payload' });
 
-        const editorRoleName = editData.role === 'manager' ? 'Manager' : 'Reviewer';
+        const editorRoleName = editData.role === 'manager' ? 'Manager' : (editData.role === 'receiver' ? 'Receiver' : 'Reviewer');
 
         const result = await prisma.pending_requests.update({
             where: { id },
             data: {
                 part_name: editData.partName || '',
-                qty: editData.qty || '',
+                qty: editData.qty !== undefined ? String(editData.qty) : '',
                 unit: editData.unit || '',
                 size: editData.size || '',
                 material: editData.material || '',
