@@ -104,7 +104,7 @@ exports.addInventoryItem = async (req, res) => {
         }
 
         const parsedPrice = parseFloat(price) || 0.00;
-        const parsedQty = parseInt(availableQty) || 0;
+        const parsedQty = parseFloat(availableQty) || 0;
 
         const result = await prisma.inventory.create({
             data: {
@@ -141,7 +141,7 @@ exports.editInventoryItem = async (req, res) => {
         } = req.body;
 
         const parsedPrice = parseFloat(price) || 0.00;
-        const parsedQty = parseInt(stockQuantity) || 0;
+        const parsedQty = parseFloat(stockQuantity) || 0;
 
         const result = await prisma.inventory.update({
             where: { id: parseInt(id) },

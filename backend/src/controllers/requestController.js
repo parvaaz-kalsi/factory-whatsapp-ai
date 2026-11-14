@@ -165,7 +165,8 @@ exports.getPending = async (req, res) => {
                 
                 suggestedMatch = match.part_name || '';
 
-                const reqQty = parseInt((row.qty || '').replace(/[^0-9]/g, ''), 10);
+                const parsedReqMatch = (row.qty || '').match(/[\d.]+/);
+                const reqQty = parsedReqMatch ? parseFloat(parsedReqMatch[0]) : 0;
                 const stock = match.available_qty !== null ? match.available_qty : 0;
 
                 if (isNaN(reqQty) || reqQty === 0) {
@@ -427,7 +428,8 @@ exports.receive = async (req, res) => {
         });
 
         // Parse received quantity
-        const receivedQtyNum = parseInt((dbRow.qty || '').replace(/[^0-9]/g, ''), 10) || 0;
+        const parsedReceivedMatch = (dbRow.qty || '').match(/[\d.]+/);
+        const receivedQtyNum = parsedReceivedMatch ? parseFloat(parsedReceivedMatch[0]) : 0;
 
         // Parse price / rate
         const rawPriceStr = String(dbRow.rate || dbRow.price || '').replace(/[^0-9.]/g, '');

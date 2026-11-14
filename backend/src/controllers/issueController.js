@@ -2,19 +2,21 @@ const prisma = require('../config/db');
 
 exports.issuePart = async (req, res) => {
     try {
-        const { inventory_id, part_name, qty_issued, issued_to, machine, issued_at } = req.body;
+        const { inventory_id, part_name, qty_issued, unit, issued_to, machine, issued_at } = req.body;
 
-        if (!part_name || !qty_issued || !issued_to || !machine || !issued_at) {
+        if (!part_name || qty_issued === undefined || qty_issued === null || !issued_to || !machine || !issued_at) {
             return res.status(400).json({ error: 'Missing required fields' });
         }
 
-        const qty = parseInt(qty_issued, 10);
+        const qty = parseFloat(qty_issued);
         if (isNaN(qty) || qty <= 0) {
             return res.status(400).json({ error: 'Invalid quantity' });
         }
 
         // Perform in a transaction to ensure atomicity
         const result = await prisma.$transaction(async (prisma) => {
+            let partUnit = (unit && unit.trim()) ? unit.trim() : null;
+
             // Find the inventory item if inventory_id is provided
             if (inventory_id) {
                 const item = await prisma.inventory.findUnique({
@@ -22,6 +24,10 @@ exports.issuePart = async (req, res) => {
                 });
 
                 if (item) {
+                    if (!partUnit && item.unit) {
+                        partUnit = item.unit.trim();
+                    }
+
                     // Update inventory
                     await prisma.inventory.update({
                         where: { id: item.id },
@@ -40,6 +46,7 @@ exports.issuePart = async (req, res) => {
                     inventory_id: inventory_id ? parseInt(inventory_id, 10) : null,
                     part_name,
                     qty_issued: qty,
+                    unit: partUnit,
                     issued_to,
                     machine,
                     issued_at: new Date(issued_at)
@@ -48,6 +55,8 @@ exports.issuePart = async (req, res) => {
 
             return issuedItem;
         });
+
+        if (global.io) global.io.emit('dashboard_update');
 
         res.json(result);
     } catch (err) {

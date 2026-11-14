@@ -14,6 +14,7 @@ export default function IssueDemandsView({
   const [formData, setFormData] = useState({
     inventory_id: '',
     qty_issued: '',
+    unit: '',
     issued_to: '',
     machine: '',
     issued_at: ''
@@ -51,7 +52,7 @@ export default function IssueDemandsView({
     return filteredIssuedItems.map(item => ({
       'Date & Time': new Date(item.issued_at).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' }),
       'Part Name': item.part_name,
-      'Qty Issued': item.qty_issued,
+      'Qty Issued': `${item.qty_issued} ${item.unit || ''}`.trim(),
       'Issued To': item.issued_to,
       'Machine': item.machine
     }));
@@ -102,14 +103,16 @@ export default function IssueDemandsView({
       return;
     }
 
-    const qty = parseInt(formData.qty_issued, 10);
+    const qty = parseFloat(formData.qty_issued);
     if (isNaN(qty) || qty <= 0) {
       setError('Quantity must be greater than zero.');
       return;
     }
 
+    const activeUnit = formData.unit || (selectedItem ? selectedItem.unit : '') || '';
+
     if (qty > availableQty) {
-      setError(`Cannot issue more than available stock (${availableQty}).`);
+      setError(`Cannot issue more than available stock (${availableQty} ${activeUnit}).`.trim());
       return;
     }
 
@@ -122,6 +125,7 @@ export default function IssueDemandsView({
           inventory_id: formData.inventory_id,
           part_name: selectedItem.partName,
           qty_issued: qty,
+          unit: activeUnit,
           issued_to: formData.issued_to,
           machine: formData.machine,
           issued_at: formData.issued_at
@@ -133,8 +137,8 @@ export default function IssueDemandsView({
         throw new Error(errorData.error || 'Failed to issue part.');
       }
 
-      setSuccess(`Successfully issued ${qty} of ${selectedItem.partName} to ${formData.issued_to}.`);
-      setFormData({ inventory_id: '', qty_issued: '', issued_to: '', machine: '', issued_at: '' });
+      setSuccess(`Successfully issued ${qty} ${activeUnit} of ${selectedItem.partName} to ${formData.issued_to}.`.trim());
+      setFormData({ inventory_id: '', qty_issued: '', unit: '', issued_to: '', machine: '', issued_at: '' });
       setPartSearch('');
       await fetchData(); // Refresh inventory and issued history
       await fetchIssuedHistory(); // Refresh local issue history table
@@ -177,20 +181,34 @@ export default function IssueDemandsView({
               placeholder="Search or select a part..."
               value={partSearch} 
               onChange={e => {
-                setPartSearch(e.target.value);
-                const match = inventoryItems.find(item => 
-                  `${item.partName} ${item.size ? `(${item.size})` : ''} - [Stock: ${item.stockQuantity}]` === e.target.value
-                );
+                const val = e.target.value;
+                setPartSearch(val);
+                const match = inventoryItems.find(item => {
+                  const withUnit = `${item.partName} ${item.size && item.size !== '—' ? `(${item.size})` : ''} - [Stock: ${item.stockQuantity} ${item.unit || ''}]`.replace(/\s+/g, ' ').trim();
+                  const withoutUnit = `${item.partName} ${item.size && item.size !== '—' ? `(${item.size})` : ''} - [Stock: ${item.stockQuantity}]`.replace(/\s+/g, ' ').trim();
+                  return withUnit === val || withoutUnit === val || item.partName.toLowerCase() === val.toLowerCase();
+                });
                 if (match) {
-                  setFormData({...formData, inventory_id: match.id.toString()});
+                  setFormData(prev => ({
+                    ...prev,
+                    inventory_id: match.id.toString(),
+                    unit: match.unit || 'Pcs.'
+                  }));
                 } else {
-                  setFormData({...formData, inventory_id: ''});
+                  setFormData(prev => ({
+                    ...prev,
+                    inventory_id: '',
+                    unit: ''
+                  }));
                 }
               }}
             />
             <datalist id="issue-parts-list">
               {inventoryItems.map(item => (
-                <option key={item.id} value={`${item.partName} ${item.size ? `(${item.size})` : ''} - [Stock: ${item.stockQuantity}]`} />
+                <option 
+                  key={item.id} 
+                  value={`${item.partName} ${item.size && item.size !== '—' ? `(${item.size})` : ''} - [Stock: ${item.stockQuantity} ${item.unit || ''}]`.replace(/\s+/g, ' ').trim()} 
+                />
               ))}
             </datalist>
           </div>
@@ -199,13 +217,28 @@ export default function IssueDemandsView({
             <label style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-secondary)', display: 'block', marginBottom: '0.25rem' }}>Quantity Issued *</label>
             <input 
               type="number" 
-              min="1" 
-              max={availableQty || 1}
+              step="any"
+              min="0.001" 
+              max={availableQty || undefined}
               className="filter-select" 
               style={{ width: '100%', padding: '0.6rem' }} 
               value={formData.qty_issued} 
               onChange={e => setFormData({...formData, qty_issued: e.target.value})}
-              placeholder="e.g. 5"
+              placeholder={formData.unit ? `e.g. 2.5` : 'e.g. 5'}
+            />
+          </div>
+
+          <div>
+            <label style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-secondary)', display: 'block', marginBottom: '0.25rem' }}>Unit</label>
+            <input 
+              type="text" 
+              readOnly
+              disabled
+              tabIndex={-1}
+              className="filter-select" 
+              style={{ width: '100%', padding: '0.6rem', backgroundColor: '#f1f5f9', color: 'var(--text-secondary)', cursor: 'not-allowed', fontWeight: 600 }} 
+              value={formData.unit || (selectedItem ? (selectedItem.unit || 'Pcs.') : '')} 
+              placeholder="Auto-filled from part"
             />
           </div>
 
@@ -309,7 +342,9 @@ export default function IssueDemandsView({
                       {new Date(item.issued_at).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', dateStyle: 'short', timeStyle: 'short' })}
                     </td>
                     <td style={{ padding: '0.85rem 1.25rem', fontWeight: 600, color: 'var(--text-primary)' }}>{item.part_name}</td>
-                    <td style={{ padding: '0.85rem 1.25rem', fontWeight: 600, color: '#16a34a' }}>{item.qty_issued}</td>
+                    <td style={{ padding: '0.85rem 1.25rem', fontWeight: 600, color: '#16a34a' }}>
+                      {item.qty_issued} {item.unit || ''}
+                    </td>
                     <td style={{ padding: '0.85rem 1.25rem', color: 'var(--text-secondary)' }}>{item.issued_to}</td>
                     <td style={{ padding: '0.85rem 1.25rem', color: 'var(--text-secondary)' }}>
                       <span style={{ padding: '0.2rem 0.5rem', backgroundColor: '#f1f5f9', borderRadius: '4px', fontSize: '0.8rem' }}>{item.machine}</span>

@@ -22,7 +22,7 @@ model inventory {
   sku                 String?  @db.VarChar(255)
   vendor              String?  @db.VarChar(255)
   location            String?  @db.VarChar(255)
-  available_qty       Int?     @default(0)
+  available_qty       Float?   @default(0)
   unit                String?  @db.VarChar(50)
   price               Decimal? @default(0.00) @db.Decimal(10, 2)
   rate                Decimal? @default(0.00) @db.Decimal(10, 2)
@@ -73,7 +73,8 @@ model issued_items {
   id           Int      @id @default(autoincrement())
   inventory_id Int?
   part_name    String   @db.VarChar(255)
-  qty_issued   Int
+  qty_issued   Float
+  unit         String?  @db.VarChar(50)
   issued_to    String   @db.VarChar(255)
   machine      String   @db.VarChar(255)
   issued_at    DateTime @default(now()) @db.Timestamptz(6)
